@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Team Skills Matrix</title>
+    <link rel="stylesheet" href="styles.css?v=13">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="container">
+            <h1>Project Team Skills Matrix</h1>
+            <p class="tagline">Team Capability Tracking & Skills Gap Analysis</p>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav id="mainNav">
+        <div class="container">
+            <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+            <button class="nav-btn" data-view="heatmap">Skills Heatmap</button>
+            <button class="nav-btn" data-view="search">Search</button>
+            <button class="nav-btn" data-view="management">Data Management</button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container">
+
+        <!-- Dashboard View -->
+        <section id="dashboard-view" class="view active">
+            <h2>Team Overview Dashboard</h2>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value" id="totalResources">0</div>
+                    <div class="metric-label">Total Resources</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="totalSkills">0</div>
+                    <div class="metric-label">Skills Tracked</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="avgSkillLevel">0.0</div>
+                    <div class="metric-label">Average Skill Level</div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>Team Skills Radar Chart</h3>
+                <canvas id="teamRadarChart"></canvas>
+            </div>
+
+            <div class="skills-lists">
+                <div class="skills-column">
+                    <h3 class="strength">Top 5 Strongest Skills</h3>
+                    <ul id="topSkills"></ul>
+                </div>
+                <div class="skills-column">
+                    <h3 class="gap">Top 5 Skills Gaps</h3>
+                    <ul id="gapSkills"></ul>
+                </div>
+            </div>
+
+            <div class="custom-chart-section">
+                <h3>Custom Sub-Skills Radar Chart</h3>
+                <p class="section-description">Select specific sub-skills to compare. Hover over data points to see the top 10 resources for each skill.</p>
+
+                <div class="subskill-selector">
+                    <div class="selector-header">
+                        <h4>Select Sub-Skills:</h4>
+                        <div class="selector-actions">
+                            <button id="clearSubSkills" class="btn-secondary">Clear All</button>
+                            <button id="updateCustomChart" class="btn-primary">Update Chart</button>
+                        </div>
+                    </div>
+                    <div class="search-filter">
+                        <input type="text" id="subSkillSearch" placeholder="Search sub-skills..." autocomplete="off">
+                        <span class="search-count" id="searchCount"></span>
+                    </div>
+                    <div id="subSkillCheckboxes" class="checkbox-grid">
+                        <!-- Checkboxes will be generated here -->
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="customRadarChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Heatmap View -->
+        <section id="heatmap-view" class="view">
+            <h2>Skills Heatmap</h2>
+            <div class="heatmap-controls">
+                <button id="sortByName">Sort by Name</button>
+                <button id="sortByAvgSkill">Sort by Avg Skill</button>
+            </div>
+            <div class="heatmap-legend">
+                <span class="legend-item"><span class="color-box level-0"></span> None</span>
+                <span class="legend-item"><span class="color-box level-1"></span> Level 1 - Beginner</span>
+                <span class="legend-item"><span class="color-box level-2"></span> Level 2 - Developing</span>
+                <span class="legend-item"><span class="color-box level-3"></span> Level 3 - Proficient</span>
+                <span class="legend-item"><span class="color-box level-4"></span> Level 4 - Expert</span>
+                <span class="legend-item"><span class="color-box level-5"></span> Level 5 - Master</span>
+            </div>
+            <div id="heatmapContainer" class="heatmap-scroll">
+                <!-- Heatmap will be generated here -->
+            </div>
+        </section>
+
+        <!-- Search View -->
+        <section id="search-view" class="view">
+            <h2>Search</h2>
+            <div class="search-box">
+                <input type="text" id="resourceSearch" placeholder="Search team members...">
+            </div>
+            <div id="searchResults" class="search-results">
+                <!-- Search results will appear here -->
+            </div>
+            <div id="resourceProfile" class="resource-profile">
+                <!-- Individual resource profile will appear here -->
+            </div>
+        </section>
+
+        <!-- Data Management View -->
+        <section id="management-view" class="view">
+            <h2>Data Management</h2>
+
+            <div class="management-grid">
+                <!-- Resource Management -->
+                <div class="management-card">
+                    <h3>Manage Resources</h3>
+                    <div class="form-group">
+                        <label for="resourceName">Resource Name:</label>
+                        <input type="text" id="resourceName" placeholder="John Smith">
+                    </div>
+                    <div class="form-group">
+                        <label for="resourceEmail">Email:</label>
+                        <input type="email" id="resourceEmail" placeholder="john.smith@company.com">
+                    </div>
+                    <button type="button" id="addResource" class="btn-primary">Add Resource</button>
+                    <hr>
+                    <div class="form-group">
+                        <label for="selectResource">Select Resource to Modify/Delete:</label>
+                        <select id="selectResource">
+                            <option value="">-- Choose Resource --</option>
+                        </select>
+                    </div>
+                    <div id="resourceSkillsEdit"></div>
+                    <button type="button" id="updateResource" class="btn-secondary" disabled>Update Resource</button>
+                    <button type="button" id="deleteResource" class="btn-danger" disabled>Delete Resource</button>
+                </div>
+
+                <!-- Skill Management -->
+                <div class="management-card">
+                    <h3>Manage Main Skill Categories</h3>
+                    <div class="form-group">
+                        <label for="newMainSkill">New Main Skill Category:</label>
+                        <input type="text" id="newMainSkill" placeholder="e.g., Data Centre">
+                    </div>
+                    <button type="button" id="addMainSkill" class="btn-primary">Add Main Skill Category</button>
+                    <hr>
+                    <div class="form-group">
+                        <label for="selectMainSkill">Select Main Skill Category:</label>
+                        <select id="selectMainSkill">
+                            <option value="">-- Choose Main Skill --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="editMainSkillSection" style="display: none;">
+                        <label for="editMainSkillName">Edit Category Name:</label>
+                        <input type="text" id="editMainSkillName" placeholder="New category name">
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="editMainSkill" class="btn-secondary" disabled>Edit Name</button>
+                        <button type="button" id="saveMainSkillName" class="btn-primary" style="display: none;">Save Name</button>
+                        <button type="button" id="cancelEditMainSkill" class="btn-secondary" style="display: none;">Cancel</button>
+                        <button type="button" id="deleteMainSkill" class="btn-danger" disabled>Delete Category</button>
+                    </div>
+
+                    <div id="subSkillsManagement" style="display: none;">
+                        <hr>
+                        <h4>Manage Sub-Skills</h4>
+                        <div class="form-group">
+                            <label for="newSubSkill">New Sub-Skill Name:</label>
+                            <input type="text" id="newSubSkill" placeholder="e.g., Cisco ACI">
+                        </div>
+                        <button type="button" id="addSubSkill" class="btn-primary">Add Sub-Skill</button>
+
+                        <div id="subSkillsList" class="sub-skills-list">
+                            <!-- Sub-skills will be listed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="data-actions">
+                <h3>Data Import/Export</h3>
+                <button type="button" id="exportData" class="btn-primary">Export Data (JSON)</button>
+                <button type="button" id="importData" class="btn-secondary">Import Data (JSON)</button>
+                <input type="file" id="importFile" accept=".json" style="display:none;">
+                <button type="button" id="resetData" class="btn-danger">Reset to Sample Data</button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Resource Skills Modal -->
+    <div id="resourceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalResourceName">Resource Name</h3>
+                <button class="modal-close" onclick="closeResourceModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="modalResourceEmail" class="modal-email"></p>
+                <div id="modalSkillsContainer" class="modal-skills-container">
+                    <!-- Skills will be populated here -->
+                </div>
+                <div class="modal-actions modal-actions-bottom">
+                    <button class="btn-primary" onclick="saveResourceSkills()">Save Changes</button>
+                    <button class="btn-secondary" onclick="closeResourceModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal confirm-modal">
+        <div class="modal-content confirm-modal-content">
+            <div class="modal-header confirm-modal-header">
+                <h3>Confirm Action</h3>
+            </div>
+            <div class="modal-body">
+                <p id="confirmModalMessage" class="confirm-modal-message"></p>
+                <div class="modal-actions confirm-modal-actions">
+                    <button class="btn-danger" id="confirmModalYes">Yes, Delete</button>
+                    <button class="btn-secondary" id="confirmModalNo">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 Project Team Skills Matrix | Last Updated: <span id="lastUpdated">Never</span></p>
+        </div>
+    </footer>
+
+    <script src="script.js?v=27"></script>
+</body>
+</html>

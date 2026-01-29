@@ -1,0 +1,301 @@
+const express = require('express');
+const router = express.Router();
+const db = require('../db');
+
+// Helper function to calculate main skill level from sub-skills
+function calculateMainSkillLevel(subSkills) {
+    if (!subSkills || Object.keys(subSkills).length === 0) return 0;
+
+    const levels = Object.values(subSkills);
+    const sum = levels.reduce((acc, level) => acc + level, 0);
+    return Math.round(sum / levels.length);
+}
+
+// GET /api/data - Return complete data in localStorage format
+router.get('/', async (req, res) => {
+    try {
+        // Get all resources
+        const resourcesResult = await db.query(
+            'SELECT id, name, email FROM resources ORDER BY name'
+        );
+
+        // Get all main skills
+        const mainSkillsResult = await db.query(
+            'SELECT id, name FROM main_skills ORDER BY name'
+        );
+
+        // Get all sub-skills
+        const subSkillsResult = await db.query(`
+            SELECT ss.id, ss.name, ss.main_skill_id, ms.name as main_skill_name
+            FROM sub_skills ss
+            JOIN main_skills ms ON ss.main_skill_id = ms.id
+            ORDER BY ms.name, ss.name
+        `);
+
+        // Get all resource-sub-skill mappings
+        const mappingsResult = await db.query(`
+            SELECT rss.resource_id, rss.sub_skill_id, rss.level,
+                   ss.name as sub_skill_name, ss.main_skill_id,
+                   ms.name as main_skill_name
+            FROM resource_sub_skills rss
+            JOIN sub_skills ss ON rss.sub_skill_id = ss.id
+            JOIN main_skills ms ON ss.main_skill_id = ms.id
+            ORDER BY rss.resource_id, ms.name, ss.name
+        `);
+
+        // Build the data structure
+        const resources = resourcesResult.rows.map(resource => {
+            // Get all mappings for this resource
+            const resourceMappings = mappingsResult.rows.filter(
+                m => m.resource_id === resource.id
+            );
+
+            // Group sub-skills by main skill
+            const subSkills = {};
+            const mainSkillsMap = {};
+
+            resourceMappings.forEach(mapping => {
+                const mainSkillName = mapping.main_skill_name;
+
+                if (!subSkills[mainSkillName]) {
+                    subSkills[mainSkillName] = {};
+                }
+
+                subSkills[mainSkillName][mapping.sub_skill_name] = mapping.level;
+            });
+
+            // Calculate main skill levels from sub-skills
+            const skills = {};
+            Object.keys(subSkills).forEach(mainSkillName => {
+                skills[mainSkillName] = calculateMainSkillLevel(subSkills[mainSkillName]);
+            });
+
+            return {
+                id: resource.id,
+                name: resource.name,
+                email: resource.email,
+                skills: skills,
+                subSkills: subSkills
+            };
+        });
+
+        // Build skills array for frontend
+        const skills = mainSkillsResult.rows.map(mainSkill => {
+            // Get sub-skills for this main skill
+            const mainSkillSubSkills = subSkillsResult.rows
+                .filter(ss => ss.main_skill_id === mainSkill.id)
+                .map(ss => ss.name);
+
+            return {
+                id: mainSkill.id,
+                name: mainSkill.name,
+                category: 'Main Skill Category',
+                subSkills: mainSkillSubSkills
+            };
+        });
+
+        // Get metadata
+        const metadataResult = await db.query(
+            "SELECT value FROM metadata WHERE key = 'last_updated'"
+        );
+        const lastUpdated = metadataResult.rows[0]?.value || new Date().toISOString();
+
+        res.json({
+            success: true,
+            data: {
+                resources: resources,
+                skills: skills,
+                lastUpdated: lastUpdated,
+                metadata: {
+                    lastUpdated: lastUpdated,
+                    version: '3.0',
+                    source: 'PostgreSQL Database'
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching data:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// POST /api/data - Save/Update complete data
+router.post('/', async (req, res) => {
+    const client = await db.getClient();
+
+    try {
+        const { resources } = req.body;
+
+        if (!resources || !Array.isArray(resources)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid data format: resources array required'
+            });
+        }
+
+        await client.query('BEGIN');
+
+        // Clear existing data
+        await client.query('DELETE FROM resource_sub_skills');
+        await client.query('DELETE FROM resources');
+        await client.query('DELETE FROM sub_skills');
+        await client.query('DELETE FROM main_skills');
+
+        // Collect all unique main skills and sub-skills
+        const mainSkillsSet = new Set();
+        const subSkillsMap = new Map(); // mainSkillName -> Set of subSkillNames
+
+        resources.forEach(resource => {
+            if (resource.subSkills) {
+                Object.keys(resource.subSkills).forEach(mainSkillName => {
+                    mainSkillsSet.add(mainSkillName);
+
+                    if (!subSkillsMap.has(mainSkillName)) {
+                        subSkillsMap.set(mainSkillName, new Set());
+                    }
+
+                    Object.keys(resource.subSkills[mainSkillName]).forEach(subSkillName => {
+                        subSkillsMap.get(mainSkillName).add(subSkillName);
+                    });
+                });
+            }
+        });
+
+        // Insert main skills
+        const mainSkillIds = new Map(); // name -> id
+        for (const mainSkillName of mainSkillsSet) {
+            const mainSkillId = mainSkillName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            mainSkillIds.set(mainSkillName, mainSkillId);
+
+            await client.query(
+                'INSERT INTO main_skills (id, name) VALUES ($1, $2)',
+                [mainSkillId, mainSkillName]
+            );
+        }
+
+        // Insert sub-skills
+        const subSkillIds = new Map(); // mainSkillName_subSkillName -> id
+        for (const [mainSkillName, subSkillNames] of subSkillsMap.entries()) {
+            const mainSkillId = mainSkillIds.get(mainSkillName);
+
+            for (const subSkillName of subSkillNames) {
+                const result = await client.query(
+                    'INSERT INTO sub_skills (main_skill_id, name) VALUES ($1, $2) RETURNING id',
+                    [mainSkillId, subSkillName]
+                );
+
+                const key = `${mainSkillName}_${subSkillName}`;
+                subSkillIds.set(key, result.rows[0].id);
+            }
+        }
+
+        // Insert resources and their skill levels
+        for (const resource of resources) {
+            // Insert resource
+            await client.query(
+                'INSERT INTO resources (id, name, email) VALUES ($1, $2, $3)',
+                [resource.id, resource.name, resource.email || null]
+            );
+
+            // Insert resource sub-skill levels
+            if (resource.subSkills) {
+                for (const [mainSkillName, subSkills] of Object.entries(resource.subSkills)) {
+                    for (const [subSkillName, level] of Object.entries(subSkills)) {
+                        const key = `${mainSkillName}_${subSkillName}`;
+                        const subSkillId = subSkillIds.get(key);
+
+                        if (subSkillId) {
+                            await client.query(
+                                'INSERT INTO resource_sub_skills (resource_id, sub_skill_id, level) VALUES ($1, $2, $3)',
+                                [resource.id, subSkillId, level]
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update metadata
+        await client.query(
+            "INSERT INTO metadata (key, value, updated_at) VALUES ('last_updated', $1, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP",
+            [new Date().toISOString()]
+        );
+
+        await client.query('COMMIT');
+
+        res.json({
+            success: true,
+            data: {
+                message: 'Data saved successfully',
+                resourcesCount: resources.length
+            }
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error saving data:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/data/import - Import data from JSON (alias for POST /)
+router.post('/import', async (req, res) => {
+    return router.handle({ ...req, method: 'POST', url: '/' }, res);
+});
+
+// POST /api/data/export - Export data as downloadable JSON
+router.post('/export', async (req, res) => {
+    try {
+        // Reuse GET / logic
+        const dataResponse = await new Promise((resolve, reject) => {
+            router.handle({ ...req, method: 'GET', url: '/' }, {
+                json: resolve,
+                status: () => ({ json: reject })
+            });
+        });
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', 'attachment; filename=skills-matrix-export.json');
+        res.json(dataResponse);
+
+    } catch (error) {
+        console.error('Error exporting data:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// POST /api/data/reset - Reset to sample data
+router.post('/reset', async (req, res) => {
+    try {
+        // Initialize/reset the database
+        await db.initDatabase();
+
+        res.json({
+            success: true,
+            data: {
+                message: 'Database reset successfully'
+            }
+        });
+
+    } catch (error) {
+        console.error('Error resetting data:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+module.exports = router;
