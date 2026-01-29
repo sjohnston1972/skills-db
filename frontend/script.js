@@ -1742,13 +1742,48 @@ function populateSubSkillCheckboxes() {
     }
 
     // Collect all sub-skills organized by category
-    data.skills.forEach(skillCategory => {
+    data.skills.forEach((skillCategory, index) => {
         if (skillCategory.subSkills && skillCategory.subSkills.length > 0) {
-            // Add category header
+            // Create collapsible category section
+            const categorySection = document.createElement('div');
+            categorySection.className = 'collapsible-category';
+            if (index === 0) {
+                categorySection.classList.add('expanded'); // First section open by default
+            }
+
+            // Create category header with select-all
             const header = document.createElement('div');
-            header.className = 'skill-category-header';
-            header.textContent = skillCategory.name;
-            container.appendChild(header);
+            header.className = 'category-header';
+
+            // Toggle icon
+            const toggleIcon = document.createElement('span');
+            toggleIcon.className = 'toggle-icon';
+            toggleIcon.textContent = index === 0 ? '▼' : '▶';
+
+            // Select-all checkbox
+            const selectAllCheckbox = document.createElement('input');
+            selectAllCheckbox.type = 'checkbox';
+            selectAllCheckbox.className = 'select-all-checkbox';
+            selectAllCheckbox.dataset.category = skillCategory.name;
+
+            // Category name
+            const categoryName = document.createElement('span');
+            categoryName.className = 'category-name';
+            categoryName.textContent = skillCategory.name;
+
+            // Skill count badge
+            const skillCount = document.createElement('span');
+            skillCount.className = 'skill-count';
+            skillCount.textContent = `(${skillCategory.subSkills.length})`;
+
+            header.appendChild(toggleIcon);
+            header.appendChild(selectAllCheckbox);
+            header.appendChild(categoryName);
+            header.appendChild(skillCount);
+
+            // Create checkboxes container
+            const checkboxesContainer = document.createElement('div');
+            checkboxesContainer.className = 'category-checkboxes';
 
             // Add checkboxes for each sub-skill
             skillCategory.subSkills.forEach(subSkill => {
@@ -1760,6 +1795,7 @@ function populateSubSkillCheckboxes() {
                 checkbox.id = `subskill-${subSkill.replace(/\s+/g, '-')}`;
                 checkbox.value = subSkill;
                 checkbox.dataset.category = skillCategory.name;
+                checkbox.className = 'subskill-checkbox';
 
                 const label = document.createElement('label');
                 label.htmlFor = checkbox.id;
@@ -1767,7 +1803,42 @@ function populateSubSkillCheckboxes() {
 
                 checkboxItem.appendChild(checkbox);
                 checkboxItem.appendChild(label);
-                container.appendChild(checkboxItem);
+                checkboxesContainer.appendChild(checkboxItem);
+            });
+
+            categorySection.appendChild(header);
+            categorySection.appendChild(checkboxesContainer);
+            container.appendChild(categorySection);
+
+            // Add click handler for header (toggle collapse)
+            header.addEventListener('click', (e) => {
+                // Don't toggle if clicking on the select-all checkbox
+                if (e.target === selectAllCheckbox) {
+                    return;
+                }
+
+                categorySection.classList.toggle('expanded');
+                toggleIcon.textContent = categorySection.classList.contains('expanded') ? '▼' : '▶';
+            });
+
+            // Add change handler for select-all checkbox
+            selectAllCheckbox.addEventListener('change', (e) => {
+                const isChecked = e.target.checked;
+                const subSkillCheckboxes = checkboxesContainer.querySelectorAll('.subskill-checkbox');
+                subSkillCheckboxes.forEach(cb => {
+                    cb.checked = isChecked;
+                });
+            });
+
+            // Add change handlers for individual checkboxes to update select-all state
+            const subSkillCheckboxes = checkboxesContainer.querySelectorAll('.subskill-checkbox');
+            subSkillCheckboxes.forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const allChecked = Array.from(subSkillCheckboxes).every(checkbox => checkbox.checked);
+                    const someChecked = Array.from(subSkillCheckboxes).some(checkbox => checkbox.checked);
+                    selectAllCheckbox.checked = allChecked;
+                    selectAllCheckbox.indeterminate = someChecked && !allChecked;
+                });
             });
         }
     });

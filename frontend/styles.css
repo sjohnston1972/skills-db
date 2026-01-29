@@ -1111,6 +1111,81 @@ footer p {
     flex: 1;
 }
 
+/* Collapsible Category Sections */
+.collapsible-category {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+    background: var(--card-bg);
+}
+
+.category-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #f3f4f6;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.category-header:hover {
+    background: #e5e7eb;
+}
+
+.toggle-icon {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    color: var(--secondary-color);
+    transition: transform 0.2s;
+}
+
+.select-all-checkbox {
+    flex-shrink: 0;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+.category-name {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.skill-count {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    color: var(--secondary-color);
+    background: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+.category-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.5rem;
+    padding: 1rem;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+}
+
+.collapsible-category.expanded .category-checkboxes {
+    max-height: 1000px;
+    opacity: 1;
+}
+
+.collapsible-category:not(.expanded) .category-checkboxes {
+    padding: 0 1rem;
+}
+
+/* Legacy style for compatibility */
 .skill-category-header {
     grid-column: 1 / -1;
     font-weight: bold;
