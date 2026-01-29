@@ -1,6 +1,139 @@
 // Network Engineer Skills Matrix - Main JavaScript
 // Author: Generated for Skills Matrix System
-// Last Updated: 2026-01-15
+// Last Updated: 2026-01-29
+
+// ==================== API CLIENT ====================
+
+const API_BASE = '/api';
+
+const API = {
+    // Skills endpoints
+    async getSkills() {
+        const response = await fetch(`${API_BASE}/skills`);
+        if (!response.ok) throw new Error('Failed to fetch skills');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async getSkill(id) {
+        const response = await fetch(`${API_BASE}/skills/${id}`);
+        if (!response.ok) throw new Error('Failed to fetch skill');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async createSkill(skill) {
+        const response = await fetch(`${API_BASE}/skills`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(skill)
+        });
+        if (!response.ok) throw new Error('Failed to create skill');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async updateSkill(id, skill) {
+        const response = await fetch(`${API_BASE}/skills/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(skill)
+        });
+        if (!response.ok) throw new Error('Failed to update skill');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async deleteSkill(id) {
+        const response = await fetch(`${API_BASE}/skills/${id}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('Failed to delete skill');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async getSubSkills(mainSkillId) {
+        const response = await fetch(`${API_BASE}/skills/${mainSkillId}/sub-skills`);
+        if (!response.ok) throw new Error('Failed to fetch sub-skills');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async createSubSkill(mainSkillId, subSkill) {
+        const response = await fetch(`${API_BASE}/skills/${mainSkillId}/sub-skills`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(subSkill)
+        });
+        if (!response.ok) throw new Error('Failed to create sub-skill');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async deleteSubSkill(mainSkillId, subSkillId) {
+        const response = await fetch(`${API_BASE}/skills/${mainSkillId}/sub-skills/${subSkillId}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('Failed to delete sub-skill');
+        const result = await response.json();
+        return result.data;
+    },
+
+    // Resources endpoints
+    async getResources() {
+        const response = await fetch(`${API_BASE}/resources`);
+        if (!response.ok) throw new Error('Failed to fetch resources');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async getResource(id) {
+        const response = await fetch(`${API_BASE}/resources/${id}`);
+        if (!response.ok) throw new Error('Failed to fetch resource');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async createResource(resource) {
+        const response = await fetch(`${API_BASE}/resources`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(resource)
+        });
+        if (!response.ok) throw new Error('Failed to create resource');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async updateResource(id, resource) {
+        const response = await fetch(`${API_BASE}/resources/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(resource)
+        });
+        if (!response.ok) throw new Error('Failed to update resource');
+        const result = await response.json();
+        return result.data;
+    },
+
+    async deleteResource(id) {
+        const response = await fetch(`${API_BASE}/resources/${id}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('Failed to delete resource');
+        const result = await response.json();
+        return result.data;
+    },
+
+    // Metadata endpoint
+    async getMetadata() {
+        const response = await fetch(`${API_BASE}/metadata`);
+        if (!response.ok) throw new Error('Failed to fetch metadata');
+        const result = await response.json();
+        return result.data;
+    }
+};
 
 // ==================== DATA STRUCTURE ====================
 
@@ -457,21 +590,105 @@ const sampleData = {
 };
 
 
-function initializeData() {
-    const existingData = localStorage.getItem('skillsMatrixData');
-    console.log('initializeData - localStorage exists:', !!existingData);
-    if (!existingData) {
-        console.log('No data found, initializing with sampleData');
-        console.log('Sample data has', sampleData.resources.length, 'resources');
-        saveData(sampleData);
-    } else {
-        // Use getData() which handles migration from engineers to resources
-        const data = getData();
-        console.log('Existing data found with', data.resources.length, 'resources');
+async function initializeData() {
+    console.log('initializeData - Testing API connection');
+    try {
+        // Test API connection by fetching data
+        const data = await getData();
+        console.log('API connected successfully:', data.resources.length, 'resources,', data.skills.length, 'skills');
+        return true;
+    } catch (error) {
+        console.error('API connection failed:', error);
+        alert('Warning: Could not connect to backend API. Some features may not work correctly.');
+        return false;
     }
 }
 
-function getData() {
+// Cache for data to avoid excessive API calls
+let dataCache = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 5000; // 5 seconds
+
+async function getData() {
+    // Return cached data if fresh
+    if (dataCache && cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_DURATION)) {
+        return dataCache;
+    }
+
+    try {
+        // Fetch all data from API
+        const [skills, resources, metadata] = await Promise.all([
+            API.getSkills(),
+            API.getResources(),
+            API.getMetadata().catch(() => ({ lastUpdated: new Date().toISOString() }))
+        ]);
+
+        // Fetch full details for each resource
+        const resourcesWithDetails = await Promise.all(
+            resources.map(async (resource) => {
+                try {
+                    return await API.getResource(resource.id);
+                } catch (err) {
+                    console.error(`Failed to fetch resource ${resource.id}:`, err);
+                    return resource;
+                }
+            })
+        );
+
+        // Transform skills data to match expected format
+        const transformedSkills = await Promise.all(
+            skills.map(async (skill) => {
+                const subSkillsData = await API.getSubSkills(skill.id);
+                return {
+                    id: skill.id,
+                    name: skill.name,
+                    category: skill.category || 'Main Skill Category',
+                    weight: skill.weight || 5,
+                    skillType: skill.skill_type || 'technical',
+                    subSkills: subSkillsData.map(ss => ({
+                        id: ss.id,
+                        name: ss.name
+                    }))
+                };
+            })
+        );
+
+        // Build data structure
+        const data = {
+            skills: transformedSkills,
+            resources: resourcesWithDetails,
+            metadata: {
+                lastUpdated: metadata.lastUpdated || new Date().toISOString()
+            }
+        };
+
+        // Update cache
+        dataCache = data;
+        cacheTimestamp = Date.now();
+
+        return data;
+    } catch (error) {
+        console.error('ERROR: Failed to fetch data from API:', error);
+        // Fallback to localStorage if API fails
+        const localData = localStorage.getItem('skillsMatrixData');
+        if (localData) {
+            console.warn('Falling back to localStorage data');
+            return JSON.parse(localData);
+        }
+        // Last resort: return sample data
+        console.warn('WARNING: Using sample data as fallback');
+        return sampleData;
+    }
+}
+
+// Clear cache when data changes
+function clearDataCache() {
+    dataCache = null;
+    cacheTimestamp = null;
+}
+
+// Old localStorage-based getData (keep as fallback)
+function getDataFromLocalStorage() {
     const data = localStorage.getItem('skillsMatrixData');
     if (!data) {
         console.warn('WARNING: getData() - localStorage is empty, returning sampleData!');
@@ -499,18 +716,22 @@ function getData() {
     return parsed;
 }
 
+// Deprecated: Now using direct API calls instead of saveData()
 function saveData(data) {
-    console.log('saveData() - saving data with', data.resources.length, 'resources');
-    data.metadata.lastUpdated = new Date().toISOString();
-    localStorage.setItem('skillsMatrixData', JSON.stringify(data));
-    console.log('saveData() - data saved to localStorage');
-    updateLastUpdated();
+    console.warn('saveData() is deprecated - using API calls directly');
+    // Keep for backward compatibility but data is saved via API now
+    clearDataCache(); // Clear cache so next getData() fetches fresh data
 }
 
-function updateLastUpdated() {
-    const data = getData();
-    const date = new Date(data.metadata.lastUpdated);
-    document.getElementById('lastUpdated').textContent = date.toLocaleString();
+async function updateLastUpdated() {
+    try {
+        const metadata = await API.getMetadata();
+        const date = new Date(metadata.lastUpdated);
+        document.getElementById('lastUpdated').textContent = date.toLocaleString();
+    } catch (error) {
+        console.error('Failed to update last updated time:', error);
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+    }
 }
 
 // ==================== NAVIGATION ====================
@@ -583,8 +804,8 @@ function scrollToCustomRadar() {
 
 let teamRadarChart = null;
 
-function renderDashboard() {
-    const data = getData();
+async function renderDashboard() {
+    const data = await getData();
 
     // Calculate metrics
     const totalResources = data.resources.length;
@@ -1094,8 +1315,8 @@ function renderManagement() {
     setupManagementEventListeners();
 }
 
-function populateResourceSelect() {
-    const data = getData();
+async function populateResourceSelect() {
+    const data = await getData();
     const select = document.getElementById('selectResource');
 
     select.innerHTML = '<option value="">-- Choose Resource --</option>';
@@ -1104,8 +1325,8 @@ function populateResourceSelect() {
     });
 }
 
-function populateMainSkillSelect() {
-    const data = getData();
+async function populateMainSkillSelect() {
+    const data = await getData();
     const select = document.getElementById('selectMainSkill');
 
     select.innerHTML = '<option value="">-- Choose Main Skill --</option>';
@@ -1150,7 +1371,7 @@ function setupManagementEventListeners() {
     document.getElementById('resetData').addEventListener('click', resetData);
 }
 
-function addResource() {
+async function addResource() {
     const name = document.getElementById('resourceName').value.trim();
     const email = document.getElementById('resourceEmail').value.trim();
     const password = document.getElementById('resourcePassword').value;
@@ -1160,29 +1381,29 @@ function addResource() {
         return;
     }
 
-    const data = getData();
-    const newEngineer = {
-        id: `eng-${Date.now()}`,
-        name: name,
-        email: email,
-        skills: {},
-        hasPassword: password.length > 0 // Flag to indicate password was set
-    };
+    try {
+        // Create resource via API
+        await API.createResource({
+            id: `eng-${Date.now()}`,
+            name: name,
+            email: email,
+            password: password || undefined // Include password if provided
+        });
 
-    data.resources.push(newEngineer);
-    saveData(data);
+        // Clear form
+        document.getElementById('resourceName').value = '';
+        document.getElementById('resourceEmail').value = '';
+        document.getElementById('resourcePassword').value = '';
 
-    document.getElementById('resourceName').value = '';
-    document.getElementById('resourceEmail').value = '';
-    document.getElementById('resourcePassword').value = '';
-
-    let message = `Resource "${name}" added successfully!`;
-    if (password) {
-        message += '\n\nNote: Password functionality requires backend integration. Currently using localStorage only.';
+        // Clear cache and refresh UI
+        clearDataCache();
+        alert(`Resource "${name}" added successfully!`);
+        await populateResourceSelect();
+        await renderDashboard();
+    } catch (error) {
+        console.error('Failed to add resource:', error);
+        alert(`Error adding resource: ${error.message}`);
     }
-    alert(message);
-    populateResourceSelect();
-    renderDashboard();
 }
 
 function onResourceSelect() {
@@ -1264,57 +1485,45 @@ function toggleAccordion(button) {
     button.classList.toggle('active');
 }
 
-function updateResource() {
+async function updateResource() {
     const resourceId = document.getElementById('selectResource').value;
     if (!resourceId) return;
 
-    const data = getData();
-    const resource = data.resources.find(e => e.id === resourceId);
+    try {
+        // Collect sub-skills from inputs
+        const inputs = document.querySelectorAll('.sub-skill-input');
+        const subSkillsByCategory = {};
 
-    // Initialize subSkills if not exists
-    if (!resource.subSkills) {
-        resource.subSkills = {};
+        inputs.forEach(input => {
+            const mainSkill = input.getAttribute('data-main-skill');
+            const subSkill = input.getAttribute('data-sub-skill');
+            const level = parseInt(input.value);
+
+            if (!subSkillsByCategory[mainSkill]) {
+                subSkillsByCategory[mainSkill] = {};
+            }
+
+            if (level > 0) {
+                subSkillsByCategory[mainSkill][subSkill] = level;
+            }
+        });
+
+        // Update resource via API
+        await API.updateResource(resourceId, {
+            subSkills: subSkillsByCategory
+        });
+
+        // Clear cache and refresh UI
+        clearDataCache();
+        alert(`Resource updated successfully! Main skills recalculated from sub-skills.`);
+        await renderDashboard();
+
+        // Refresh the editor to show updated values
+        onResourceSelect();
+    } catch (error) {
+        console.error('Failed to update resource:', error);
+        alert(`Error updating resource: ${error.message}`);
     }
-
-    // Update sub-skills from inputs
-    const inputs = document.querySelectorAll('.sub-skill-input');
-    const subSkillsByCategory = {};
-
-    inputs.forEach(input => {
-        const mainSkill = input.getAttribute('data-main-skill');
-        const subSkill = input.getAttribute('data-sub-skill');
-        const level = parseInt(input.value);
-
-        if (!subSkillsByCategory[mainSkill]) {
-            subSkillsByCategory[mainSkill] = {};
-        }
-
-        if (level > 0) {
-            subSkillsByCategory[mainSkill][subSkill] = level;
-        }
-    });
-
-    // Update resource's sub-skills
-    resource.subSkills = subSkillsByCategory;
-
-    // Recalculate main skill averages from sub-skills
-    resource.skills = {};
-    Object.keys(subSkillsByCategory).forEach(mainSkill => {
-        const subSkills = subSkillsByCategory[mainSkill];
-        const levels = Object.values(subSkills);
-
-        if (levels.length > 0) {
-            const average = Math.round(levels.reduce((a, b) => a + b, 0) / levels.length);
-            resource.skills[mainSkill] = average;
-        }
-    });
-
-    saveData(data);
-    alert(`Resource "${resource.name}" updated successfully! Main skills recalculated from sub-skills.`);
-    renderDashboard();
-
-    // Refresh the editor to show updated main skill values
-    onResourceSelect();
 }
 
 async function deleteResource() {
@@ -1325,32 +1534,41 @@ async function deleteResource() {
         return;
     }
 
-    const data = getData();
-    const resource = data.resources.find(e => e.id === resourceId);
+    try {
+        // Get resource details first
+        const data = await getData();
+        const resource = data.resources.find(e => e.id === resourceId);
 
-    if (!resource) {
-        alert('Resource not found.');
-        return;
+        if (!resource) {
+            alert('Resource not found.');
+            return;
+        }
+
+        const confirmed = await showConfirmModal(`Are you sure you want to delete "${resource.name}"?`);
+        if (!confirmed) {
+            return;
+        }
+
+        // Delete via API
+        await API.deleteResource(resourceId);
+
+        // Clear cache and refresh UI
+        clearDataCache();
+        alert(`Resource "${resource.name}" deleted successfully!`);
+        document.getElementById('selectResource').value = '';
+        document.getElementById('resourceSkillsEdit').innerHTML = '';
+        document.getElementById('updateResource').disabled = true;
+        document.getElementById('changePassword').disabled = true;
+        document.getElementById('deleteResource').disabled = true;
+        await populateResourceSelect();
+        await renderDashboard();
+    } catch (error) {
+        console.error('Failed to delete resource:', error);
+        alert(`Error deleting resource: ${error.message}`);
     }
-
-    const confirmed = await showConfirmModal(`Are you sure you want to delete "${resource.name}"?`);
-    if (!confirmed) {
-        return;
-    }
-
-    data.resources = data.resources.filter(e => e.id !== resourceId);
-    saveData(data);
-
-    alert(`Resource "${resource.name}" deleted successfully!`);
-    document.getElementById('selectResource').value = '';
-    document.getElementById('resourceSkillsEdit').innerHTML = '';
-    document.getElementById('updateResource').disabled = true;
-    document.getElementById('deleteResource').disabled = true;
-    populateResourceSelect();
-    renderDashboard();
 }
 
-function addMainSkill() {
+async function addMainSkill() {
     const name = document.getElementById('newMainSkill').value.trim();
     const weight = parseInt(document.getElementById('newMainSkillWeight').value) || 5;
     const skillType = document.getElementById('newMainSkillType').value || 'technical';
@@ -1365,33 +1583,30 @@ function addMainSkill() {
         return;
     }
 
-    const data = getData();
+    try {
+        // Create skill via API
+        await API.createSkill({
+            id: `skill-${Date.now()}`,
+            name: name,
+            category: 'Main Skill Category',
+            weight: weight,
+            skillType: skillType
+        });
 
-    // Check for duplicates
-    if (data.skills.find(s => s.name.toLowerCase() === name.toLowerCase())) {
-        alert('This main skill category already exists.');
-        return;
+        // Clear form
+        document.getElementById('newMainSkill').value = '';
+        document.getElementById('newMainSkillWeight').value = '5';
+        document.getElementById('newMainSkillType').value = 'technical';
+
+        // Clear cache and refresh UI
+        clearDataCache();
+        alert(`Main skill category "${name}" added successfully!`);
+        await populateMainSkillSelect();
+        await renderDashboard();
+    } catch (error) {
+        console.error('Failed to add main skill:', error);
+        alert(`Error adding skill: ${error.message}`);
     }
-
-    const newSkill = {
-        id: `skill-${Date.now()}`,
-        name: name,
-        category: 'Main Skill Category',
-        weight: weight,
-        skillType: skillType,
-        subSkills: []
-    };
-
-    data.skills.push(newSkill);
-    saveData(data);
-
-    document.getElementById('newMainSkill').value = '';
-    document.getElementById('newMainSkillWeight').value = '5';
-    document.getElementById('newMainSkillType').value = 'technical';
-
-    alert(`Main skill category "${name}" added successfully!`);
-    populateMainSkillSelect();
-    renderDashboard();
 }
 
 function onMainSkillSelect() {
@@ -1451,7 +1666,7 @@ function cancelEditMainSkill() {
     document.getElementById('selectMainSkill').disabled = false;
 }
 
-function saveMainSkillName() {
+async function saveMainSkillName() {
     const skillId = document.getElementById('selectMainSkill').value;
     const newName = document.getElementById('editMainSkillName').value.trim();
     const newWeight = parseInt(document.getElementById('editMainSkillWeight').value) || 5;
@@ -1467,54 +1682,32 @@ function saveMainSkillName() {
         return;
     }
 
-    const data = getData();
-    const mainSkill = data.skills.find(s => s.id === skillId);
+    try {
+        // Update skill via API
+        await API.updateSkill(skillId, {
+            name: newName,
+            weight: newWeight,
+            skillType: newSkillType,
+            category: 'Main Skill Category'
+        });
 
-    if (!mainSkill) {
-        alert('Skill category not found.');
-        return;
+        // Clear cache and refresh UI
+        clearDataCache();
+        alert(`Skill category updated successfully!`);
+
+        // Refresh the select dropdown
+        await populateMainSkillSelect();
+        document.getElementById('selectMainSkill').value = skillId;
+
+        // Cancel edit mode
+        cancelEditMainSkill();
+
+        // Refresh dashboard
+        await renderDashboard();
+    } catch (error) {
+        console.error('Failed to update skill:', error);
+        alert(`Error updating skill: ${error.message}`);
     }
-
-    const oldName = mainSkill.name;
-
-    // Check if name already exists
-    const existingSkill = data.skills.find(s => s.id !== skillId && s.name === newName);
-    if (existingSkill) {
-        alert('A skill category with this name already exists.');
-        return;
-    }
-
-    // Update skill category properties
-    mainSkill.name = newName;
-    mainSkill.weight = newWeight;
-    mainSkill.skillType = newSkillType;
-
-    // Update all engineers who have this skill
-    data.resources.forEach(resource => {
-        if (resource.skills && resource.skills[oldName] !== undefined) {
-            resource.skills[newName] = resource.skills[oldName];
-            delete resource.skills[oldName];
-        }
-
-        if (resource.subSkills && resource.subSkills[oldName]) {
-            resource.subSkills[newName] = resource.subSkills[oldName];
-            delete resource.subSkills[oldName];
-        }
-    });
-
-    saveData(data);
-
-    alert(`Skill category renamed from "${oldName}" to "${newName}"`);
-
-    // Refresh the select dropdown
-    populateMainSkillSelect();
-    document.getElementById('selectMainSkill').value = skillId;
-
-    // Cancel edit mode
-    cancelEditMainSkill();
-
-    // Refresh dashboard
-    renderDashboard();
 }
 
 function displaySubSkills(mainSkill) {
@@ -1542,7 +1735,7 @@ function displaySubSkills(mainSkill) {
     container.innerHTML = html;
 }
 
-function addSubSkill() {
+async function addSubSkill() {
     const skillId = document.getElementById('selectMainSkill').value;
     if (!skillId) {
         alert('Please select a main skill category first.');
@@ -1555,27 +1748,28 @@ function addSubSkill() {
         return;
     }
 
-    const data = getData();
-    const mainSkill = data.skills.find(s => s.id === skillId);
+    try {
+        // Create sub-skill via API
+        await API.createSubSkill(skillId, {
+            id: `subskill-${Date.now()}`,
+            name: subSkillName
+        });
 
-    // Initialize subSkills array if it doesn't exist
-    if (!mainSkill.subSkills) {
-        mainSkill.subSkills = [];
+        // Clear form
+        document.getElementById('newSubSkill').value = '';
+
+        // Clear cache and refresh UI
+        clearDataCache();
+        alert(`Sub-skill "${subSkillName}" added successfully!`);
+
+        // Refresh sub-skills display
+        const data = await getData();
+        const mainSkill = data.skills.find(s => s.id === skillId);
+        displaySubSkills(mainSkill);
+    } catch (error) {
+        console.error('Failed to add sub-skill:', error);
+        alert(`Error adding sub-skill: ${error.message}`);
     }
-
-    // Check for duplicates
-    if (mainSkill.subSkills.includes(subSkillName)) {
-        alert('This sub-skill already exists in this category.');
-        return;
-    }
-
-    mainSkill.subSkills.push(subSkillName);
-    saveData(data);
-
-    document.getElementById('newSubSkill').value = '';
-
-    alert(`Sub-skill "${subSkillName}" added to "${mainSkill.name}"!`);
-    displaySubSkills(mainSkill);
 }
 
 async function deleteSubSkill(mainSkillId, subSkillName) {
@@ -1584,36 +1778,29 @@ async function deleteSubSkill(mainSkillId, subSkillName) {
         return;
     }
 
-    const data = getData();
-    const mainSkill = data.skills.find(s => s.id === mainSkillId);
+    try {
+        // Get data to find the subSkillId
+        const data = await getData();
+        const mainSkill = data.skills.find(s => s.id === mainSkillId);
+        const subSkill = mainSkill.subSkills.find(ss => (typeof ss === 'string' ? ss : ss.name) === subSkillName);
+        const subSkillId = typeof subSkill === 'object' ? subSkill.id : `subskill-${subSkillName}`;
 
-    // Remove from main skill's sub-skills list
-    mainSkill.subSkills = mainSkill.subSkills.filter(s => s !== subSkillName);
+        // Delete via API
+        await API.deleteSubSkill(mainSkillId, subSkillId);
 
-    // Remove from all engineers' sub-skills
-    data.resources.forEach(resource => {
-        if (resource.subSkills && resource.subSkills[mainSkill.name]) {
-            delete resource.subSkills[mainSkill.name][subSkillName];
+        // Clear cache and refresh UI
+        clearDataCache();
+        alert(`Sub-skill "${subSkillName}" deleted successfully!`);
 
-            // Recalculate main skill average
-            const subSkills = resource.subSkills[mainSkill.name];
-            const levels = Object.values(subSkills);
-
-            if (levels.length > 0) {
-                const average = Math.round(levels.reduce((a, b) => a + b, 0) / levels.length);
-                resource.skills[mainSkill.name] = average;
-            } else {
-                delete resource.skills[mainSkill.name];
-                delete resource.subSkills[mainSkill.name];
-            }
-        }
-    });
-
-    saveData(data);
-    alert(`Sub-skill "${subSkillName}" deleted successfully!`);
-
-    displaySubSkills(mainSkill);
-    renderDashboard();
+        // Refresh display
+        const updatedData = await getData();
+        const updatedMainSkill = updatedData.skills.find(s => s.id === mainSkillId);
+        displaySubSkills(updatedMainSkill);
+        await renderDashboard();
+    } catch (error) {
+        console.error('Failed to delete sub-skill:', error);
+        alert(`Error deleting sub-skill: ${error.message}`);
+    }
 }
 
 function startEditSubSkill(mainSkillId, subSkillName) {
@@ -1706,33 +1893,32 @@ async function deleteMainSkill() {
     const skillId = document.getElementById('selectMainSkill').value;
     if (!skillId) return;
 
-    const data = getData();
-    const mainSkill = data.skills.find(s => s.id === skillId);
+    try {
+        const data = await getData();
+        const mainSkill = data.skills.find(s => s.id === skillId);
 
-    const confirmed = await showConfirmModal(`Are you sure you want to delete "${mainSkill.name}" and all its sub-skills? This will remove it from all resources.`);
-    if (!confirmed) {
-        return;
-    }
-
-    // Remove from all engineers
-    data.resources.forEach(resource => {
-        delete resource.skills[mainSkill.name];
-        if (resource.subSkills) {
-            delete resource.subSkills[mainSkill.name];
+        const confirmed = await showConfirmModal(`Are you sure you want to delete "${mainSkill.name}" and all its sub-skills? This will remove it from all resources.`);
+        if (!confirmed) {
+            return;
         }
-    });
 
-    // Remove from skills list
-    data.skills = data.skills.filter(s => s.id !== skillId);
+        // Delete via API
+        await API.deleteSkill(skillId);
 
-    saveData(data);
-    alert(`Main skill category "${mainSkill.name}" deleted successfully!`);
+        // Clear cache and refresh UI
+        clearDataCache();
+        alert(`Main skill category "${mainSkill.name}" deleted successfully!`);
 
-    document.getElementById('selectMainSkill').value = '';
-    document.getElementById('deleteMainSkill').disabled = true;
-    document.getElementById('subSkillsManagement').style.display = 'none';
-    populateMainSkillSelect();
-    renderDashboard();
+        document.getElementById('selectMainSkill').value = '';
+        document.getElementById('deleteMainSkill').disabled = true;
+        document.getElementById('editMainSkill').disabled = true;
+        document.getElementById('subSkillsManagement').style.display = 'none';
+        await populateMainSkillSelect();
+        await renderDashboard();
+    } catch (error) {
+        console.error('Failed to delete main skill:', error);
+        alert(`Error deleting main skill: ${error.message}`);
+    }
 }
 
 function exportData() {
@@ -1789,8 +1975,8 @@ async function resetData() {
 
 let customRadarChart = null;
 
-function populateSubSkillCheckboxes() {
-    const data = getData();
+async function populateSubSkillCheckboxes() {
+    const data = await getData();
     const container = document.getElementById('subSkillCheckboxes');
 
     if (!container) {
@@ -2275,7 +2461,7 @@ function closeChangePasswordModal() {
     modal.classList.remove('show');
 }
 
-function saveNewPassword() {
+async function saveNewPassword() {
     const resourceId = document.getElementById('selectResource').value;
     const newPassword = document.getElementById('newPassword').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
@@ -2300,20 +2486,20 @@ function saveNewPassword() {
         return;
     }
 
-    // Update resource with password flag
-    const data = getData();
-    const resource = data.resources.find(r => r.id === resourceId);
+    try {
+        // Update password via API
+        await API.updateResource(resourceId, {
+            password: newPassword
+        });
 
-    if (!resource) {
-        alert('Resource not found.');
-        return;
+        // Clear cache
+        clearDataCache();
+        alert('Password updated successfully!');
+        closeChangePasswordModal();
+    } catch (error) {
+        console.error('Failed to update password:', error);
+        alert(`Error updating password: ${error.message}`);
     }
-
-    resource.hasPassword = true;
-    saveData(data);
-
-    alert('Password updated successfully!\n\nNote: Password functionality requires backend integration. Currently using localStorage only.');
-    closeChangePasswordModal();
 }
 
 // ==================== CONFIRMATION MODAL ====================
@@ -2440,11 +2626,11 @@ document.addEventListener('click', (e) => {
 
 // ==================== INITIALIZATION ====================
 
-document.addEventListener('DOMContentLoaded', () => {
-    initializeData();
+document.addEventListener('DOMContentLoaded', async () => {
+    await initializeData();
     setupNavigation();
-    updateLastUpdated();
-    renderDashboard();
-    populateSubSkillCheckboxes();
+    await updateLastUpdated();
+    await renderDashboard();
+    await populateSubSkillCheckboxes();
     setupCustomChartEventListeners();
 });
