@@ -7,7 +7,7 @@ router.get('/', async (req, res) => {
     try {
         // Get all main skills
         const mainSkillsResult = await db.query(
-            'SELECT id, name, category, created_at FROM main_skills ORDER BY name'
+            'SELECT id, name, category, weight, skill_type, created_at FROM main_skills ORDER BY name'
         );
 
         // Get all sub-skills
@@ -26,6 +26,8 @@ router.get('/', async (req, res) => {
                 id: mainSkill.id,
                 name: mainSkill.name,
                 category: mainSkill.category,
+                weight: mainSkill.weight,
+                skillType: mainSkill.skill_type,
                 created_at: mainSkill.created_at,
                 subSkills: []
             });
@@ -62,7 +64,7 @@ router.get('/:id', async (req, res) => {
 
         // Get main skill
         const mainSkillResult = await db.query(
-            'SELECT id, name, category, created_at FROM main_skills WHERE id = $1',
+            'SELECT id, name, category, weight, skill_type, created_at FROM main_skills WHERE id = $1',
             [id]
         );
 
@@ -101,12 +103,28 @@ router.get('/:id', async (req, res) => {
 // POST /api/skills - Create new main skill
 router.post('/', async (req, res) => {
     try {
-        const { id, name, category } = req.body;
+        const { id, name, category, weight, skillType } = req.body;
 
         if (!id || !name) {
             return res.status(400).json({
                 success: false,
                 error: 'Skill ID and name are required'
+            });
+        }
+
+        // Validate weight (1-10)
+        if (weight !== undefined && (weight < 1 || weight > 10)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Weight must be between 1 and 10'
+            });
+        }
+
+        // Validate skillType
+        if (skillType && !['technical', 'non-technical'].includes(skillType)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Skill type must be "technical" or "non-technical"'
             });
         }
 
@@ -125,8 +143,8 @@ router.post('/', async (req, res) => {
 
         // Insert new main skill
         const result = await db.query(
-            'INSERT INTO main_skills (id, name, category) VALUES ($1, $2, $3) RETURNING id, name, category, created_at',
-            [id, name, category || null]
+            'INSERT INTO main_skills (id, name, category, weight, skill_type) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, category, weight, skill_type, created_at',
+            [id, name, category || null, weight || 5, skillType || 'technical']
         );
 
         // Update metadata
@@ -153,12 +171,28 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, category } = req.body;
+        const { name, category, weight, skillType } = req.body;
 
-        if (!name && category === undefined) {
+        if (!name && category === undefined && weight === undefined && skillType === undefined) {
             return res.status(400).json({
                 success: false,
-                error: 'At least name or category must be provided'
+                error: 'At least one field must be provided'
+            });
+        }
+
+        // Validate weight if provided
+        if (weight !== undefined && (weight < 1 || weight > 10)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Weight must be between 1 and 10'
+            });
+        }
+
+        // Validate skillType if provided
+        if (skillType && !['technical', 'non-technical'].includes(skillType)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Skill type must be "technical" or "non-technical"'
             });
         }
 
@@ -177,8 +211,8 @@ router.put('/:id', async (req, res) => {
 
         // Update main skill
         const result = await db.query(
-            'UPDATE main_skills SET name = COALESCE($1, name), category = COALESCE($2, category) WHERE id = $3 RETURNING id, name, category',
-            [name || null, category !== undefined ? category : null, id]
+            'UPDATE main_skills SET name = COALESCE($1, name), category = COALESCE($2, category), weight = COALESCE($3, weight), skill_type = COALESCE($4, skill_type) WHERE id = $5 RETURNING id, name, category, weight, skill_type',
+            [name || null, category !== undefined ? category : null, weight || null, skillType || null, id]
         );
 
         // Update metadata

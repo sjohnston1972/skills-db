@@ -12,6 +12,7 @@ CREATE TABLE resources (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255),
+    password_hash VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -23,6 +24,8 @@ CREATE TABLE main_skills (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     category VARCHAR(255),
+    weight INTEGER DEFAULT 5 CHECK (weight >= 1 AND weight <= 10),
+    skill_type VARCHAR(20) DEFAULT 'technical' CHECK (skill_type IN ('technical', 'non-technical')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

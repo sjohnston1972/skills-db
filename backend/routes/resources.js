@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const bcrypt = require('bcrypt');
+
+const SALT_ROUNDS = 10;
 
 // Helper function to calculate main skill level from sub-skills
 function calculateMainSkillLevel(subSkills) {
@@ -104,13 +107,19 @@ router.get('/:id', async (req, res) => {
 // POST /api/resources - Create new resource
 router.post('/', async (req, res) => {
     try {
-        const { id, name, email } = req.body;
+        const { id, name, email, password } = req.body;
 
         if (!id || !name) {
             return res.status(400).json({
                 success: false,
                 error: 'Resource ID and name are required'
             });
+        }
+
+        // Hash password if provided
+        let passwordHash = null;
+        if (password) {
+            passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
         }
 
         // Check if ID already exists
@@ -128,8 +137,8 @@ router.post('/', async (req, res) => {
 
         // Insert new resource
         const result = await db.query(
-            'INSERT INTO resources (id, name, email) VALUES ($1, $2, $3) RETURNING id, name, email, created_at',
-            [id, name, email || null]
+            'INSERT INTO resources (id, name, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, email, created_at',
+            [id, name, email || null, passwordHash]
         );
 
         // Update metadata
@@ -158,9 +167,15 @@ router.put('/:id', async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { name, email, subSkills } = req.body;
+        const { name, email, password, subSkills } = req.body;
 
         await client.query('BEGIN');
+
+        // Hash new password if provided
+        let passwordHash = undefined;
+        if (password) {
+            passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+        }
 
         // Check if resource exists
         const existingResult = await client.query(
@@ -177,10 +192,10 @@ router.put('/:id', async (req, res) => {
         }
 
         // Update resource basic info
-        if (name || email !== undefined) {
+        if (name || email !== undefined || passwordHash !== undefined) {
             await client.query(
-                'UPDATE resources SET name = COALESCE($1, name), email = COALESCE($2, email), updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-                [name || null, email !== undefined ? email : null, id]
+                'UPDATE resources SET name = COALESCE($1, name), email = COALESCE($2, email), password_hash = COALESCE($3, password_hash), updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+                [name || null, email !== undefined ? email : null, passwordHash, id]
             );
         }
 
