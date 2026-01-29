@@ -553,6 +553,32 @@ function renderView(viewName) {
     }
 }
 
+// ==================== NAVIGATION FUNCTIONS ====================
+
+function navigateToSearch() {
+    // Switch to search tab
+    const navButtons = document.querySelectorAll('.nav-btn');
+    navButtons.forEach(btn => btn.classList.remove('active'));
+    const searchBtn = document.querySelector('[data-view="search"]');
+    if (searchBtn) {
+        searchBtn.classList.add('active');
+    }
+
+    // Show search view
+    document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+    document.getElementById('search-view').classList.add('active');
+
+    // Render search view
+    renderView('search');
+}
+
+function scrollToCustomRadar() {
+    const customRadarSection = document.querySelector('.custom-chart-section');
+    if (customRadarSection) {
+        customRadarSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
 // ==================== DASHBOARD ====================
 
 let teamRadarChart = null;
@@ -572,22 +598,9 @@ function renderDashboard() {
     });
     const totalSkills = totalSubSkills;
 
-    let totalSkillLevels = 0;
-    let skillCount = 0;
-
-    data.resources.forEach(resource => {
-        Object.values(resource.skills).forEach(level => {
-            totalSkillLevels += level;
-            skillCount++;
-        });
-    });
-
-    const avgSkillLevel = skillCount > 0 ? (totalSkillLevels / skillCount).toFixed(1) : 0;
-
     // Update metrics
     document.getElementById('totalResources').textContent = totalResources;
     document.getElementById('totalSkills').textContent = totalSkills;
-    document.getElementById('avgSkillLevel').textContent = avgSkillLevel;
 
     // Calculate average skill levels for each skill
     const skillAverages = {};
@@ -826,12 +839,16 @@ function displaySearchResults(resources) {
             openResourceModal(resourceId);
         });
 
-        // Hover: show tooltip
+        // Hover: show tooltip with 250ms delay and fade-in
+        let hoverTimeout;
         card.addEventListener('mouseenter', (e) => {
-            showResourceTooltip(e.currentTarget, resource);
+            hoverTimeout = setTimeout(() => {
+                showResourceTooltip(e.currentTarget, resource);
+            }, 250);
         });
 
         card.addEventListener('mouseleave', () => {
+            clearTimeout(hoverTimeout);
             hideResourceTooltip();
         });
     });

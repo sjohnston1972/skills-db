@@ -34,17 +34,45 @@
             <h2>Team Overview Dashboard</h2>
 
             <div class="metrics-grid">
-                <div class="metric-card">
+                <div class="metric-card clickable" id="totalResourcesCard" onclick="navigateToSearch()">
                     <div class="metric-value" id="totalResources">0</div>
                     <div class="metric-label">Total Resources</div>
+                    <small class="metric-hint">Click to view all</small>
                 </div>
-                <div class="metric-card">
+                <div class="metric-card clickable" id="skillsTrackedCard" onclick="scrollToCustomRadar()">
                     <div class="metric-value" id="totalSkills">0</div>
                     <div class="metric-label">Skills Tracked</div>
+                    <small class="metric-hint">Click to explore</small>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="avgSkillLevel">0.0</div>
-                    <div class="metric-label">Average Skill Level</div>
+            </div>
+
+            <div class="rating-scale-display">
+                <h3>Rating Scale</h3>
+                <div class="rating-scale-grid">
+                    <div class="rating-item">
+                        <span class="rating-badge level-0">0</span>
+                        <span class="rating-text"><strong>None/No Proficiency:</strong> No knowledge or experience with the skill.</span>
+                    </div>
+                    <div class="rating-item">
+                        <span class="rating-badge level-1">1</span>
+                        <span class="rating-text"><strong>Limited/Elementary Proficiency:</strong> Basic awareness or limited, supervised use.</span>
+                    </div>
+                    <div class="rating-item">
+                        <span class="rating-badge level-2">2</span>
+                        <span class="rating-text"><strong>Basic/Limited Working Proficiency:</strong> Can handle routine tasks with some guidance.</span>
+                    </div>
+                    <div class="rating-item">
+                        <span class="rating-badge level-3">3</span>
+                        <span class="rating-text"><strong>Proficient/Professional Working Proficiency:</strong> Capable of working independently, handles non-routine problems, and requires minimal supervision.</span>
+                    </div>
+                    <div class="rating-item">
+                        <span class="rating-badge level-4">4</span>
+                        <span class="rating-text"><strong>Advanced/Full Professional Proficiency:</strong> Highly developed skill, can apply knowledge broadly and coach others.</span>
+                    </div>
+                    <div class="rating-item">
+                        <span class="rating-badge level-5">5</span>
+                        <span class="rating-text"><strong>Expert/Native or Bilingual Proficiency:</strong> Total mastery, able to innovate, and considered a subject matter expert.</span>
+                    </div>
                 </div>
             </div>
 
