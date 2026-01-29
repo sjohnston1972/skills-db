@@ -93,11 +93,12 @@ const startServer = async () => {
         const tableCount = parseInt(tablesResult.rows[0].count);
 
         if (tableCount < 5) {
-            console.log('Database not fully initialized. Running initialization...');
-            await db.initDatabase();
-            console.log('Database initialized successfully!');
+            console.log('⚠️  WARNING: Database not fully initialized. Please run init-db.sql manually.');
+            console.log('   Tables found:', tableCount, '/ 5');
+            // Commented out auto-init to prevent data loss
+            // await db.initDatabase();
         } else {
-            console.log('Database already initialized.');
+            console.log('Database initialized. Tables:', tableCount, '/ 5');
         }
 
         // Start listening
