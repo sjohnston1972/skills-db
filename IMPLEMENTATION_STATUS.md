@@ -536,3 +536,184 @@ PostgreSQL Database
 5. Backup database before production use
 
 **Status:** Ready for testing and deployment! 🚀
+
+---
+
+## 🔧 Session 2026-01-29 (Evening): Production Fixes & Data Loading
+
+### Issues Discovered & Resolved:
+
+#### 1. **Browser Cache Issue** ✅ FIXED
+**Problem:**
+- Nginx configuration had aggressive caching for .js files (1 year, immutable)
+- Browser was caching old script.js despite ?v=29 parameter
+- Frontend showed "DataAPI is not defined" errors
+
+**Root Cause:**
+```nginx
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+```
+
+**Solution:**
+- Separated .js/.css from images/fonts in Nginx config
+- JS/CSS now use moderate caching (1 hour) to allow version updates
+- Images/fonts retain long-term caching
+- Updated version to v=30
+
+**New Nginx Config:**
+```nginx
+# Cache images and fonts (not JS/CSS to allow version updates)
+location ~* \.(png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+
+# JS and CSS files - allow versioning with query strings
+location ~* \.(js|css)$ {
+    add_header Cache-Control "public, max-age=3600";
+}
+```
+
+#### 2. **Database Auto-Initialization Bug** ✅ FIXED
+**Problem:**
+- Backend server.js had destructive auto-initialization
+- On restart, if table count < 5, it would DROP all tables
+- Data was being lost on container restarts
+
+**Root Cause:**
+```javascript
+if (tableCount < 5) {
+    console.log('Database not fully initialized. Running initialization...');
+    await db.initDatabase();  // This DROPS all tables!
+}
+```
+
+**Solution:**
+- Disabled automatic database initialization
+- Changed to warning message only
+- Requires manual schema initialization with init-db.sql
+
+**Updated Code (backend/server.js:95-102):**
+```javascript
+if (tableCount < 5) {
+    console.log('⚠️  WARNING: Database not fully initialized. Please run init-db.sql manually.');
+    console.log('   Tables found:', tableCount, '/ 5');
+    // Commented out auto-init to prevent data loss
+    // await db.initDatabase();
+}
+```
+
+#### 3. **Real Data Loading** ✅ COMPLETE
+
+**Excel Data Import:**
+- Processed: `Project Services Engineers Skills Matrix.xlsx`
+- Script: `import-excel-real.py`
+- Output: `imported-data.sql`
+
+**Data Loaded:**
+- ✅ 22 Engineers/Resources
+- ✅ 10 Main Skill Categories
+- ✅ 193 Sub-Skills
+- ✅ 622 Skill Level Assignments
+
+**Main Skills Loaded:**
+1. Cisco Enterprise and SD-WAN (weight: 8)
+2. Other Networking (weight: 7)
+3. Data Centre (weight: 7)
+4. Security Products (weight: 9)
+5. Network Lifecycle and operation (weight: 7)
+6. Collaboration (weight: 7)
+7. Azure (weight: 9)
+8. Nutanix (weight: 7)
+9. AWS (weight: 9)
+10. Dell (weight: 7)
+
+**Engineers Loaded:**
+1. Aaron McElhinney
+2. Adam Dec
+3. Andrew Twigger
+4. Barry Ho
+5. Carlos Hahn
+6. Craig Neal
+7. Fraser Cassels
+8. Frazer Stockton
+9. Gemma Dalziel
+10. Golam Gaus
+11. Kevin Reid
+12. Martin Hart
+13. Mike Edwards
+14. Nathan Fagan
+15. Rob Grant
+16. Rod Fawns
+17. Russell Bain
+18. Scott Leport
+19. Stephen Burling
+20. Steven Johnston
+21. Thomas Fitzsimons
+22. Tuncay Tatar
+
+**Skill Level Mapping (Excel to Numeric):**
+```python
+'no exposure': 0
+'shadowed or lab deployed': 1
+'training only': 1
+'implemented once': 2
+'implemented multiple time': 3
+'implemented multiple times': 3
+'subject matter expert': 5
+```
+
+#### 4. **Docker Container Rebuild** ✅ COMPLETE
+- Stopped and removed old container
+- Rebuilt with updated Nginx config
+- Started new container on port 8098
+- Initialized database schema with init-db.sql
+- Loaded real data with imported-data.sql
+- Verified all services running (PostgreSQL, Node.js, Nginx)
+
+**Verification Commands:**
+```sql
+-- Verified data counts
+SELECT COUNT(*) FROM resources;        -- 22
+SELECT COUNT(*) FROM main_skills;      -- 10
+SELECT COUNT(*) FROM sub_skills;       -- 193
+SELECT COUNT(*) FROM resource_sub_skills;  -- 622
+```
+
+### Files Modified:
+1. **nginx.conf** - Updated cache configuration
+2. **frontend/index.html** - Bumped version to v=30
+3. **backend/server.js** - Disabled auto-initialization
+
+### Deployment Status:
+- ✅ Docker container rebuilt and running
+- ✅ Nginx configuration optimized for versioning
+- ✅ Database schema initialized
+- ✅ Real production data loaded (22 engineers)
+- ✅ All services operational
+- ⚠️ **User Action Required:** Hard refresh browser (Ctrl+Shift+R / Cmd+Shift+R) to clear cached JavaScript
+
+### Testing Checklist (Post-Fix):
+- [ ] Hard refresh browser to load script.js?v=30
+- [ ] Verify no "DataAPI is not defined" errors
+- [ ] Confirm radar charts display with 22 engineers
+- [ ] Verify heatmap shows all 10 main skill categories
+- [ ] Test search with real engineer names
+- [ ] Validate skill data for accuracy against Excel file
+- [ ] Test all CRUD operations with production data
+- [ ] Verify data persists after container restart
+
+### Next Session Tasks:
+1. User testing with production data
+2. Verify all features work with 22 engineers and 193 skills
+3. Address any data quality issues
+4. Consider implementing authentication (Task #5 from Phase 3)
+5. Backup database regularly
+
+**Session Completed:** 2026-01-29 23:12 UTC
+**Container Status:** ✅ Running (skills-matrix-db)
+**Database Status:** ✅ Populated with real data
+**Frontend Status:** ✅ Updated to v=30
