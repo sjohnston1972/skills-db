@@ -960,7 +960,6 @@ function showResourceProfile(resourceId) {
 
     if (!resource) return;
 
-    const profileContainer = document.getElementById('resourceProfile');
     const allSkills = data.skills.map(s => s.name);
     const missingSkills = allSkills.filter(s => !resource.skills[s]);
 
@@ -1008,11 +1007,37 @@ function showResourceProfile(resourceId) {
         html += '</div>';
     }
 
-    profileContainer.innerHTML = html;
+    // Display in modal instead of inline
+    const modalContent = document.getElementById('modalProfileContent');
+    modalContent.innerHTML = html;
+
+    // Show modal
+    const modal = document.getElementById('profileModal');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden'; // Prevent background scrolling
 
     // Render individual radar chart
-    renderResourceRadar(resource, allSkills);
+    // Use setTimeout to ensure canvas is rendered
+    setTimeout(() => {
+        renderResourceRadar(resource, allSkills);
+    }, 100);
 }
+
+function closeProfileModal() {
+    const modal = document.getElementById('profileModal');
+    modal.style.display = 'none';
+    document.body.style.overflow = ''; // Restore scrolling
+}
+
+// Close modal on ESC key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const profileModal = document.getElementById('profileModal');
+        if (profileModal && profileModal.style.display === 'flex') {
+            closeProfileModal();
+        }
+    }
+});
 
 function renderResourceRadar(resource, allSkills) {
     const ctx = document.getElementById('resourceRadarChart').getContext('2d');
@@ -1098,6 +1123,7 @@ function setupManagementEventListeners() {
 
     // Update/Delete Resource
     document.getElementById('updateResource').addEventListener('click', updateResource);
+    document.getElementById('changePassword').addEventListener('click', openChangePasswordModal);
     document.getElementById('deleteResource').addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -1127,6 +1153,7 @@ function setupManagementEventListeners() {
 function addResource() {
     const name = document.getElementById('resourceName').value.trim();
     const email = document.getElementById('resourceEmail').value.trim();
+    const password = document.getElementById('resourcePassword').value;
 
     if (!name || !email) {
         alert('Please enter both name and email.');
@@ -1138,7 +1165,8 @@ function addResource() {
         id: `eng-${Date.now()}`,
         name: name,
         email: email,
-        skills: {}
+        skills: {},
+        hasPassword: password.length > 0 // Flag to indicate password was set
     };
 
     data.resources.push(newEngineer);
@@ -1146,8 +1174,13 @@ function addResource() {
 
     document.getElementById('resourceName').value = '';
     document.getElementById('resourceEmail').value = '';
+    document.getElementById('resourcePassword').value = '';
 
-    alert(`Resource "${name}" added successfully!`);
+    let message = `Resource "${name}" added successfully!`;
+    if (password) {
+        message += '\n\nNote: Password functionality requires backend integration. Currently using localStorage only.';
+    }
+    alert(message);
     populateResourceSelect();
     renderDashboard();
 }
@@ -1157,12 +1190,14 @@ function onResourceSelect() {
 
     if (!resourceId) {
         document.getElementById('updateResource').disabled = true;
+        document.getElementById('changePassword').disabled = true;
         document.getElementById('deleteResource').disabled = true;
         document.getElementById('resourceSkillsEdit').innerHTML = '';
         return;
     }
 
     document.getElementById('updateResource').disabled = false;
+    document.getElementById('changePassword').disabled = false;
     document.getElementById('deleteResource').disabled = false;
 
     const data = getData();
@@ -1317,9 +1352,16 @@ async function deleteResource() {
 
 function addMainSkill() {
     const name = document.getElementById('newMainSkill').value.trim();
+    const weight = parseInt(document.getElementById('newMainSkillWeight').value) || 5;
+    const skillType = document.getElementById('newMainSkillType').value || 'technical';
 
     if (!name) {
         alert('Please enter a main skill category name.');
+        return;
+    }
+
+    if (weight < 1 || weight > 10) {
+        alert('Weight must be between 1 and 10.');
         return;
     }
 
@@ -1335,6 +1377,8 @@ function addMainSkill() {
         id: `skill-${Date.now()}`,
         name: name,
         category: 'Main Skill Category',
+        weight: weight,
+        skillType: skillType,
         subSkills: []
     };
 
@@ -1342,6 +1386,8 @@ function addMainSkill() {
     saveData(data);
 
     document.getElementById('newMainSkill').value = '';
+    document.getElementById('newMainSkillWeight').value = '5';
+    document.getElementById('newMainSkillType').value = 'technical';
 
     alert(`Main skill category "${name}" added successfully!`);
     populateMainSkillSelect();
@@ -1379,9 +1425,14 @@ function startEditMainSkill() {
 
     if (!mainSkill) return;
 
-    // Show edit section with current name
+    // Show edit section with current values
     document.getElementById('editMainSkillName').value = mainSkill.name;
+    document.getElementById('editMainSkillWeight').value = mainSkill.weight || 5;
+    document.getElementById('editMainSkillType').value = mainSkill.skillType || 'technical';
+
     document.getElementById('editMainSkillSection').style.display = 'block';
+    document.getElementById('editMainSkillWeightSection').style.display = 'block';
+    document.getElementById('editMainSkillTypeSection').style.display = 'block';
     document.getElementById('editMainSkill').style.display = 'none';
     document.getElementById('saveMainSkillName').style.display = 'inline-block';
     document.getElementById('cancelEditMainSkill').style.display = 'inline-block';
@@ -1391,6 +1442,8 @@ function startEditMainSkill() {
 
 function cancelEditMainSkill() {
     document.getElementById('editMainSkillSection').style.display = 'none';
+    document.getElementById('editMainSkillWeightSection').style.display = 'none';
+    document.getElementById('editMainSkillTypeSection').style.display = 'none';
     document.getElementById('editMainSkill').style.display = 'inline-block';
     document.getElementById('saveMainSkillName').style.display = 'none';
     document.getElementById('cancelEditMainSkill').style.display = 'none';
@@ -1401,9 +1454,16 @@ function cancelEditMainSkill() {
 function saveMainSkillName() {
     const skillId = document.getElementById('selectMainSkill').value;
     const newName = document.getElementById('editMainSkillName').value.trim();
+    const newWeight = parseInt(document.getElementById('editMainSkillWeight').value) || 5;
+    const newSkillType = document.getElementById('editMainSkillType').value || 'technical';
 
     if (!skillId || !newName) {
         alert('Please enter a valid category name.');
+        return;
+    }
+
+    if (newWeight < 1 || newWeight > 10) {
+        alert('Weight must be between 1 and 10.');
         return;
     }
 
@@ -1424,8 +1484,10 @@ function saveMainSkillName() {
         return;
     }
 
-    // Update skill category name
+    // Update skill category properties
     mainSkill.name = newName;
+    mainSkill.weight = newWeight;
+    mainSkill.skillType = newSkillType;
 
     // Update all engineers who have this skill
     data.resources.forEach(resource => {
@@ -1951,16 +2013,41 @@ function renderCustomRadarChart() {
                         afterLabel: function(context) {
                             const index = context.dataIndex;
                             const skillData = skillsData[index];
-                            const top10 = getTop10ResourcesForSubSkill(skillData.name, skillData.category);
+                            const data = getData();
 
-                            if (top10.length === 0) {
+                            // Get all resources with this sub-skill
+                            const resourcesWithSkill = data.resources
+                                .map(res => {
+                                    const level = res.subSkills?.[skillData.category]?.[skillData.name] || 0;
+                                    return {
+                                        name: res.name,
+                                        level: level
+                                    };
+                                })
+                                .filter(res => res.level > 0)
+                                .sort((a, b) => b.level - a.level); // Sort descending
+
+                            if (resourcesWithSkill.length === 0) {
                                 return '\n\nNo resources have this skill yet.';
                             }
 
-                            let result = '\n\nTop 10 Resources:';
-                            top10.forEach((eng, i) => {
-                                result += `\n${i + 1}. ${eng.name} (Level ${eng.level})`;
+                            let result = '';
+
+                            // Top 3 Most Skilled
+                            const top3 = resourcesWithSkill.slice(0, 3);
+                            result += '\n\nMost Skilled:';
+                            top3.forEach((res, i) => {
+                                result += `\n  ${i + 1}. ${res.name} (Level ${res.level})`;
                             });
+
+                            // Bottom 3 Least Skilled (only if more than 3 resources)
+                            if (resourcesWithSkill.length > 3) {
+                                const bottom3 = resourcesWithSkill.slice(-3).reverse(); // Get last 3 and reverse
+                                result += '\n\nLeast Skilled:';
+                                bottom3.forEach((res, i) => {
+                                    result += `\n  ${i + 1}. ${res.name} (Level ${res.level})`;
+                                });
+                            }
 
                             return result;
                         }
@@ -2166,6 +2253,67 @@ function openResourceModal(resourceId) {
 function closeResourceModal() {
     document.getElementById('resourceModal').classList.remove('show');
     currentModalResourceId = null;
+}
+
+// ==================== CHANGE PASSWORD MODAL ====================
+
+function openChangePasswordModal() {
+    const resourceId = document.getElementById('selectResource').value;
+    if (!resourceId) return;
+
+    // Clear password fields
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+
+    // Show modal
+    const modal = document.getElementById('changePasswordModal');
+    modal.classList.add('show');
+}
+
+function closeChangePasswordModal() {
+    const modal = document.getElementById('changePasswordModal');
+    modal.classList.remove('show');
+}
+
+function saveNewPassword() {
+    const resourceId = document.getElementById('selectResource').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (!resourceId) {
+        alert('No resource selected.');
+        return;
+    }
+
+    if (!newPassword) {
+        alert('Please enter a new password.');
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        alert('Passwords do not match.');
+        return;
+    }
+
+    if (newPassword.length < 6) {
+        alert('Password must be at least 6 characters long.');
+        return;
+    }
+
+    // Update resource with password flag
+    const data = getData();
+    const resource = data.resources.find(r => r.id === resourceId);
+
+    if (!resource) {
+        alert('Resource not found.');
+        return;
+    }
+
+    resource.hasPassword = true;
+    saveData(data);
+
+    alert('Password updated successfully!\n\nNote: Password functionality requires backend integration. Currently using localStorage only.');
+    closeChangePasswordModal();
 }
 
 // ==================== CONFIRMATION MODAL ====================

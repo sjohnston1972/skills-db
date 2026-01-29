@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=13">
+    <link rel="stylesheet" href="styles.css?v=14">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -169,6 +169,11 @@
                         <label for="resourceEmail">Email:</label>
                         <input type="email" id="resourceEmail" placeholder="john.smith@company.com">
                     </div>
+                    <div class="form-group">
+                        <label for="resourcePassword">Password (optional):</label>
+                        <input type="password" id="resourcePassword" placeholder="Leave blank to skip login access">
+                        <small style="color: var(--secondary-color); display: block; margin-top: 0.25rem;">Leave blank if resource should not have login access</small>
+                    </div>
                     <button type="button" id="addResource" class="btn-primary">Add Resource</button>
                     <hr>
                     <div class="form-group">
@@ -178,8 +183,11 @@
                         </select>
                     </div>
                     <div id="resourceSkillsEdit"></div>
-                    <button type="button" id="updateResource" class="btn-secondary" disabled>Update Resource</button>
-                    <button type="button" id="deleteResource" class="btn-danger" disabled>Delete Resource</button>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button type="button" id="updateResource" class="btn-secondary" disabled>Update Resource</button>
+                        <button type="button" id="changePassword" class="btn-secondary" disabled>Change Password</button>
+                        <button type="button" id="deleteResource" class="btn-danger" disabled>Delete Resource</button>
+                    </div>
                 </div>
 
                 <!-- Skill Management -->
@@ -188,6 +196,17 @@
                     <div class="form-group">
                         <label for="newMainSkill">New Main Skill Category:</label>
                         <input type="text" id="newMainSkill" placeholder="e.g., Data Centre">
+                    </div>
+                    <div class="form-group">
+                        <label for="newMainSkillWeight">Skill Weight (1=least demand, 10=most demand):</label>
+                        <input type="number" id="newMainSkillWeight" min="1" max="10" value="5" placeholder="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="newMainSkillType">Skill Type:</label>
+                        <select id="newMainSkillType">
+                            <option value="technical">Technical</option>
+                            <option value="non-technical">Non-Technical</option>
+                        </select>
                     </div>
                     <button type="button" id="addMainSkill" class="btn-primary">Add Main Skill Category</button>
                     <hr>
@@ -201,8 +220,19 @@
                         <label for="editMainSkillName">Edit Category Name:</label>
                         <input type="text" id="editMainSkillName" placeholder="New category name">
                     </div>
+                    <div class="form-group" id="editMainSkillWeightSection" style="display: none;">
+                        <label for="editMainSkillWeight">Skill Weight (1-10):</label>
+                        <input type="number" id="editMainSkillWeight" min="1" max="10" placeholder="5">
+                    </div>
+                    <div class="form-group" id="editMainSkillTypeSection" style="display: none;">
+                        <label for="editMainSkillType">Skill Type:</label>
+                        <select id="editMainSkillType">
+                            <option value="technical">Technical</option>
+                            <option value="non-technical">Non-Technical</option>
+                        </select>
+                    </div>
                     <div style="display: flex; gap: 0.5rem;">
-                        <button type="button" id="editMainSkill" class="btn-secondary" disabled>Edit Name</button>
+                        <button type="button" id="editMainSkill" class="btn-secondary" disabled>Edit</button>
                         <button type="button" id="saveMainSkillName" class="btn-primary" style="display: none;">Save Name</button>
                         <button type="button" id="cancelEditMainSkill" class="btn-secondary" style="display: none;">Cancel</button>
                         <button type="button" id="deleteMainSkill" class="btn-danger" disabled>Delete Category</button>
@@ -234,6 +264,39 @@
         </section>
 
     </main>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal">
+        <div class="modal-backdrop" onclick="closeProfileModal()"></div>
+        <div class="modal-content profile-modal-content">
+            <button class="modal-close" onclick="closeProfileModal()">&times;</button>
+            <div id="modalProfileContent"></div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="modal">
+        <div class="modal-content confirm-modal-content">
+            <div class="modal-header">
+                <h3>Change Password</h3>
+                <button class="modal-close" onclick="closeChangePasswordModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newPassword">New Password:</label>
+                    <input type="password" id="newPassword" placeholder="Enter new password">
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password:</label>
+                    <input type="password" id="confirmPassword" placeholder="Confirm new password">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-primary" onclick="saveNewPassword()">Save Password</button>
+                    <button class="btn-secondary" onclick="closeChangePasswordModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Resource Skills Modal -->
     <div id="resourceModal" class="modal">
@@ -278,6 +341,6 @@
         </div>
     </footer>
 
-    <script src="script.js?v=27"></script>
+    <script src="script.js?v=28"></script>
 </body>
 </html>
