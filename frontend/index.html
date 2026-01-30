@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=39">
+    <link rel="stylesheet" href="styles.css?v=40">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -22,6 +22,7 @@
             <button class="nav-btn active" data-view="dashboard">Dashboard</button>
             <button class="nav-btn" data-view="heatmap">Skills Heatmap</button>
             <button class="nav-btn" data-view="search">Search</button>
+            <button class="nav-btn" data-view="skills">Skills</button>
             <button class="nav-btn" data-view="management">Data Management</button>
         </div>
     </nav>
@@ -92,6 +93,14 @@
                 </div>
             </div>
 
+            <div class="weighted-gaps-section">
+                <h3>Priority Skills Gaps (Weighted by Demand)</h3>
+                <p class="section-description">Skills gaps ranked by priority score. Higher scores indicate critical skills with high demand and low team proficiency. <strong>Score = (5 - Current Avg) × Weight</strong></p>
+                <ul id="weightedGaps" class="weighted-gaps-list">
+                    <!-- Weighted gaps will be generated here -->
+                </ul>
+            </div>
+
             <div class="custom-chart-section">
                 <h3>Custom Sub-Skills Radar Chart</h3>
                 <p class="section-description">Select specific sub-skills to compare. Hover over data points to see the top 10 resources for each skill.</p>
@@ -150,6 +159,17 @@
             </div>
             <div id="resourceProfile" class="resource-profile">
                 <!-- Individual resource profile will appear here -->
+            </div>
+        </section>
+
+        <!-- Skills View -->
+        <section id="skills-view" class="view">
+            <h2>Skills Management</h2>
+            <div class="search-box">
+                <input type="text" id="skillSearch" placeholder="Search skills...">
+            </div>
+            <div id="skillsResults" class="search-results">
+                <!-- Skill cards will appear here -->
             </div>
         </section>
 
@@ -334,6 +354,36 @@
         </div>
     </div>
 
+    <!-- Skill Sub-Skills Modal -->
+    <div id="skillModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalSkillName">Skill Name</h3>
+                <button class="modal-close" onclick="closeSkillModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Skill Type:</label>
+                    <span id="modalSkillType" style="font-weight: 600;"></span>
+                </div>
+                <div class="form-group">
+                    <label>Weight/Demand:</label>
+                    <span id="modalSkillWeight" style="font-weight: 600;"></span>
+                </div>
+                <hr>
+                <h4>Manage Sub-Skills</h4>
+                <div class="form-group">
+                    <label for="newSubSkillModal">New Sub-Skill Name:</label>
+                    <input type="text" id="newSubSkillModal" placeholder="e.g., Python">
+                </div>
+                <button type="button" id="addSubSkillModal" class="btn-primary">Add Sub-Skill</button>
+                <div id="subSkillsListModal" class="sub-skills-list" style="margin-top: 1rem;">
+                    <!-- Sub-skills will be listed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer>
         <div class="container">
@@ -341,6 +391,6 @@
         </div>
     </footer>
 
-    <script src="script.js?v=43"></script>
+    <script src="script.js?v=52"></script>
 </body>
 </html>

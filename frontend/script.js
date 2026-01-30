@@ -644,7 +644,7 @@ async function getData() {
                     name: skill.name,
                     category: skill.category || 'Main Skill Category',
                     weight: skill.weight || 5,
-                    skillType: skill.skill_type || 'technical',
+                    skillType: skill.skillType || 'technical',
                     subSkills: subSkillsData.map(ss => ({
                         id: ss.id,
                         name: ss.name
@@ -768,6 +768,9 @@ async function renderView(viewName) {
         case 'search':
             await renderSearch();
             break;
+        case 'skills':
+            await renderSkills();
+            break;
         case 'management':
             await renderManagement();
             break;
@@ -823,8 +826,10 @@ async function renderDashboard() {
     document.getElementById('totalResources').textContent = totalResources;
     document.getElementById('totalSkills').textContent = totalSkills;
 
-    // Calculate average skill levels for each skill
-    const skillAverages = {};
+    // Calculate average skill levels for each skill, separated by type
+    const technicalSkillAverages = {};
+    const nonTechnicalSkillAverages = {};
+
     data.skills.forEach(skill => {
         let sum = 0;
         let count = 0;
@@ -834,25 +839,49 @@ async function renderDashboard() {
                 count++;
             }
         });
-        skillAverages[skill.name] = count > 0 ? sum / count : 0;
+        const average = count > 0 ? sum / count : 0;
+
+        // Separate by skill type
+        if (skill.skillType === 'non-technical') {
+            nonTechnicalSkillAverages[skill.name] = average;
+        } else {
+            // Default to technical if not specified
+            technicalSkillAverages[skill.name] = average;
+        }
     });
 
-    // Render radar chart
-    renderRadarChart(skillAverages);
+    // Render radar chart with both datasets
+    renderRadarChart(technicalSkillAverages, nonTechnicalSkillAverages);
+
+    // Combine for top/bottom skills display
+    const allSkillAverages = { ...technicalSkillAverages, ...nonTechnicalSkillAverages };
 
     // Render top/bottom skills
-    renderTopSkills(skillAverages);
+    renderTopSkills(allSkillAverages);
+
+    // Render weighted gap analysis
+    renderWeightedGaps(data);
 }
 
-function renderRadarChart(skillAverages) {
+function renderRadarChart(technicalSkillAverages, nonTechnicalSkillAverages) {
     const ctx = document.getElementById('teamRadarChart').getContext('2d');
 
-    // Filter out skills with 0 average (no one has that skill)
-    const filteredSkills = Object.entries(skillAverages)
-        .filter(([skill, avg]) => avg > 0);
+    // Get all unique skill names from both technical and non-technical
+    const allSkillNames = new Set([
+        ...Object.keys(technicalSkillAverages),
+        ...Object.keys(nonTechnicalSkillAverages)
+    ]);
 
-    const labels = filteredSkills.map(([skill, avg]) => skill);
-    const values = filteredSkills.map(([skill, avg]) => avg);
+    // Filter out skills with 0 average in both categories
+    const labels = Array.from(allSkillNames).filter(skillName => {
+        const techAvg = technicalSkillAverages[skillName] || 0;
+        const nonTechAvg = nonTechnicalSkillAverages[skillName] || 0;
+        return techAvg > 0 || nonTechAvg > 0;
+    });
+
+    // Create data arrays for each dataset
+    const techData = labels.map(label => technicalSkillAverages[label] || 0);
+    const nonTechData = labels.map(label => nonTechnicalSkillAverages[label] || 0);
 
     if (teamRadarChart) {
         teamRadarChart.destroy();
@@ -863,8 +892,8 @@ function renderRadarChart(skillAverages) {
         data: {
             labels: labels,
             datasets: [{
-                label: 'Team Average Skill Level',
-                data: values,
+                label: 'Tech',
+                data: techData,
                 backgroundColor: 'rgba(37, 99, 235, 0.2)',
                 borderColor: 'rgba(37, 99, 235, 1)',
                 borderWidth: 2,
@@ -872,6 +901,16 @@ function renderRadarChart(skillAverages) {
                 pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
                 pointHoverBorderColor: 'rgba(37, 99, 235, 1)'
+            }, {
+                label: 'Non-Tech',
+                data: nonTechData,
+                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                borderColor: 'rgba(16, 185, 129, 1)',
+                borderWidth: 2,
+                pointBackgroundColor: 'rgba(16, 185, 129, 1)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgba(16, 185, 129, 1)'
             }]
         },
         options: {
@@ -887,7 +926,29 @@ function renderRadarChart(skillAverages) {
             plugins: {
                 legend: {
                     display: true,
-                    position: 'top'
+                    position: 'top',
+                    onClick: (e, legendItem, legend) => {
+                        const index = legendItem.datasetIndex;
+                        const chart = legend.chart;
+                        const meta = chart.getDatasetMeta(index);
+
+                        // Toggle visibility
+                        meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
+                        chart.update();
+                    },
+                    labels: {
+                        generateLabels: (chart) => {
+                            const datasets = chart.data.datasets;
+                            return datasets.map((dataset, i) => ({
+                                text: dataset.label,
+                                fillStyle: dataset.backgroundColor,
+                                strokeStyle: dataset.borderColor,
+                                lineWidth: dataset.borderWidth,
+                                hidden: !chart.isDatasetVisible(i),
+                                datasetIndex: i
+                            }));
+                        }
+                    }
                 }
             }
         }
@@ -915,6 +976,67 @@ function renderTopSkills(skillAverages) {
             <span class="skill-score" style="background: var(--danger-color);">${avg.toFixed(1)}</span>
         </li>
     `).join('');
+}
+
+function renderWeightedGaps(data) {
+    const container = document.getElementById('weightedGaps');
+    if (!container) return;
+
+    // Calculate gap scores for all skills
+    const gapScores = data.skills.map(skill => {
+        // Calculate current average for this skill
+        let sum = 0;
+        let count = 0;
+        data.resources.forEach(resource => {
+            if (resource.skills[skill.name]) {
+                sum += resource.skills[skill.name];
+                count++;
+            }
+        });
+        const currentAvg = count > 0 ? sum / count : 0;
+
+        // Gap Score = (Max Level - Current Avg) × Weight
+        const maxLevel = 5;
+        const gap = maxLevel - currentAvg;
+        const gapScore = gap * (skill.weight || 5);
+
+        return {
+            name: skill.name,
+            currentAvg: currentAvg,
+            weight: skill.weight || 5,
+            gap: gap,
+            gapScore: gapScore,
+            skillType: skill.skillType || 'technical'
+        };
+    });
+
+    // Sort by gap score descending and take top 10
+    const topGaps = gapScores
+        .sort((a, b) => b.gapScore - a.gapScore)
+        .slice(0, 10);
+
+    // Render the list
+    container.innerHTML = topGaps.map((item, index) => {
+        const priorityClass = item.gapScore > 30 ? 'critical' : item.gapScore > 20 ? 'high' : item.gapScore > 10 ? 'medium' : 'low';
+        const typeColor = item.skillType === 'non-technical' ? '#10b981' : '#2563eb';
+
+        return `
+            <li class="weighted-gap-item priority-${priorityClass}">
+                <div class="gap-rank">#${index + 1}</div>
+                <div class="gap-info">
+                    <div class="gap-name">
+                        <span style="color: ${typeColor}; font-weight: 600;">${item.name}</span>
+                        <span class="weight-badge" title="Demand/Priority Weight">W: ${item.weight}/10</span>
+                    </div>
+                    <div class="gap-details">
+                        <span>Current: ${item.currentAvg.toFixed(1)}/5</span>
+                        <span>Gap: ${item.gap.toFixed(1)}</span>
+                        <span class="gap-score-badge" title="Priority Score = Gap × Weight">${item.gapScore.toFixed(1)}</span>
+                    </div>
+                </div>
+            </li>
+        `;
+    }).join('');
 }
 
 // ==================== HEATMAP ====================
@@ -1337,6 +1459,158 @@ function renderResourceRadar(resource, allSkills) {
             }
         }
     });
+}
+
+// ==================== SKILLS MANAGEMENT ====================
+
+let currentModalSkillId = null;
+
+async function renderSkills() {
+    const data = await getData();
+    const searchInput = document.getElementById('skillSearch');
+    const resultsContainer = document.getElementById('skillsResults');
+
+    // Display all skills initially
+    displaySkillCards(data.skills);
+
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        const filtered = data.skills.filter(skill =>
+            skill.name.toLowerCase().includes(query) ||
+            (skill.skillType && skill.skillType.toLowerCase().includes(query))
+        );
+        displaySkillCards(filtered);
+    });
+}
+
+function displaySkillCards(skills) {
+    const resultsContainer = document.getElementById('skillsResults');
+
+    if (!skills || skills.length === 0) {
+        resultsContainer.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--text-light);">No skills found</p>';
+        return;
+    }
+
+    resultsContainer.innerHTML = skills.map(skill => {
+        const subSkillCount = skill.subSkills ? skill.subSkills.length : 0;
+        const typeColor = skill.skillType === 'non-technical' ? '#10b981' : '#2563eb';
+        const typeBadge = skill.skillType === 'non-technical' ? 'Non-Tech' : 'Tech';
+
+        return `
+            <div class="resource-card" data-skill-id="${skill.id}">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                    <h4 style="margin: 0;">${skill.name}</h4>
+                    <span style="background: ${typeColor}; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${typeBadge}</span>
+                </div>
+                <p style="color: var(--text-light); font-size: 0.9rem; margin: 0.5rem 0;"><strong>Weight:</strong> ${skill.weight || 5}/10</p>
+                <p style="color: var(--text-light); font-size: 0.9rem;"><strong>${subSkillCount}</strong> sub-skills</p>
+                <div class="resource-card-actions">
+                    <button class="btn-view" onclick="viewSkillDetails('${skill.id}')">View</button>
+                    <button class="btn-edit" onclick="openSkillModal('${skill.id}')">Edit Sub-Skills</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function viewSkillDetails(skillId) {
+    const data = await getData();
+    const skill = data.skills.find(s => s.id === skillId);
+    if (!skill) return;
+
+    const subSkillsList = skill.subSkills && skill.subSkills.length > 0
+        ? skill.subSkills.map(ss => {
+            const name = typeof ss === 'string' ? ss : ss.name;
+            return `<li style="padding: 0.25rem 0;">${name}</li>`;
+        }).join('')
+        : '<li style="color: var(--text-light);">No sub-skills</li>';
+
+    alert(`Skill: ${skill.name}\n\nType: ${skill.skillType || 'technical'}\nWeight: ${skill.weight || 5}/10\n\nSub-Skills:\n${skill.subSkills && skill.subSkills.length > 0 ? skill.subSkills.map(ss => typeof ss === 'string' ? ss : ss.name).join(', ') : 'None'}`);
+}
+
+async function openSkillModal(skillId) {
+    const data = await getData();
+    const skill = data.skills.find(s => s.id === skillId);
+    if (!skill) return;
+
+    currentModalSkillId = skillId;
+
+    document.getElementById('modalSkillName').textContent = skill.name;
+    document.getElementById('modalSkillType').textContent = skill.skillType || 'technical';
+    document.getElementById('modalSkillWeight').textContent = `${skill.weight || 5}/10`;
+
+    // Display sub-skills
+    displayModalSubSkills(skill.subSkills || []);
+
+    // Show modal
+    document.getElementById('skillModal').classList.add('show');
+
+    // Set up add button
+    document.getElementById('addSubSkillModal').onclick = async () => {
+        const input = document.getElementById('newSubSkillModal');
+        const subSkillName = input.value.trim();
+        if (!subSkillName) {
+            alert('Please enter a sub-skill name');
+            return;
+        }
+
+        try {
+            await API.createSubSkill(currentModalSkillId, subSkillName);
+            input.value = '';
+            clearDataCache();
+            const updatedData = await getData();
+            const updatedSkill = updatedData.skills.find(s => s.id === currentModalSkillId);
+            displayModalSubSkills(updatedSkill.subSkills || []);
+            await renderSkills(); // Refresh the cards
+        } catch (error) {
+            console.error('Failed to add sub-skill:', error);
+            alert(`Error adding sub-skill: ${error.message}`);
+        }
+    };
+}
+
+function displayModalSubSkills(subSkills) {
+    const container = document.getElementById('subSkillsListModal');
+
+    if (!subSkills || subSkills.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-light); padding: 1rem;">No sub-skills yet</p>';
+        return;
+    }
+
+    container.innerHTML = subSkills.map(subSkill => {
+        const subSkillName = typeof subSkill === 'string' ? subSkill : subSkill.name;
+        const subSkillId = typeof subSkill === 'object' ? subSkill.id : null;
+
+        return `
+            <div class="sub-skill-tag" style="margin: 0.5rem 0;">
+                <span class="sub-skill-name">${subSkillName}</span>
+                <button class="delete-sub-skill-btn" onclick="deleteModalSubSkill('${subSkillName}', ${subSkillId})">×</button>
+            </div>
+        `;
+    }).join('');
+}
+
+async function deleteModalSubSkill(subSkillName, subSkillId) {
+    const confirmed = await showConfirmModal(`Are you sure you want to delete the sub-skill "${subSkillName}"? This will remove it from all resources.`);
+    if (!confirmed) return;
+
+    try {
+        await API.deleteSubSkill(currentModalSkillId, subSkillId);
+        clearDataCache();
+        const updatedData = await getData();
+        const updatedSkill = updatedData.skills.find(s => s.id === currentModalSkillId);
+        displayModalSubSkills(updatedSkill.subSkills || []);
+        await renderSkills(); // Refresh the cards
+    } catch (error) {
+        console.error('Failed to delete sub-skill:', error);
+        alert(`Error deleting sub-skill: ${error.message}`);
+    }
+}
+
+function closeSkillModal() {
+    document.getElementById('skillModal').classList.remove('show');
+    currentModalSkillId = null;
+    document.getElementById('newSubSkillModal').value = '';
 }
 
 // ==================== DATA MANAGEMENT ====================
@@ -2160,7 +2434,8 @@ async function getTeamAverageForSubSkill(subSkillName, category) {
 
 async function renderCustomRadarChart() {
     const container = document.getElementById('subSkillCheckboxes');
-    const selectedCheckboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+    // Only select sub-skill checkboxes, not the select-all checkboxes
+    const selectedCheckboxes = container.querySelectorAll('input.subskill-checkbox:checked');
 
     if (selectedCheckboxes.length === 0) {
         console.log('No sub-skills selected for custom radar chart');
@@ -2221,7 +2496,21 @@ async function renderCustomRadarChart() {
                     beginAtZero: true,
                     max: 5,
                     ticks: {
-                        stepSize: 1
+                        stepSize: 1,
+                        font: {
+                            size: 11
+                        }
+                    },
+                    pointLabels: {
+                        font: {
+                            size: 11
+                        },
+                        padding: 20,
+                        centerPointLabels: false,
+                        callback: function(label, index) {
+                            // Replace hyphens with non-breaking hyphens to prevent wrapping
+                            return label.toString().replace(/-/g, '\u2011');
+                        }
                     }
                 }
             },
