@@ -741,7 +741,7 @@ function setupNavigation() {
     const views = document.querySelectorAll('.view');
 
     navButtons.forEach(button => {
-        button.addEventListener('click', () => {
+        button.addEventListener('click', async () => {
             const viewName = button.getAttribute('data-view');
 
             // Update active states
@@ -752,31 +752,31 @@ function setupNavigation() {
             document.getElementById(`${viewName}-view`).classList.add('active');
 
             // Render the selected view
-            renderView(viewName);
+            await renderView(viewName);
         });
     });
 }
 
-function renderView(viewName) {
+async function renderView(viewName) {
     switch(viewName) {
         case 'dashboard':
-            renderDashboard();
+            await renderDashboard();
             break;
         case 'heatmap':
-            renderHeatmap();
+            await renderHeatmap();
             break;
         case 'search':
-            renderSearch();
+            await renderSearch();
             break;
         case 'management':
-            renderManagement();
+            await renderManagement();
             break;
     }
 }
 
 // ==================== NAVIGATION FUNCTIONS ====================
 
-function navigateToSearch() {
+async function navigateToSearch() {
     // Switch to search tab
     const navButtons = document.querySelectorAll('.nav-btn');
     navButtons.forEach(btn => btn.classList.remove('active'));
@@ -790,7 +790,7 @@ function navigateToSearch() {
     document.getElementById('search-view').classList.add('active');
 
     // Render search view
-    renderView('search');
+    await renderView('search');
 }
 
 function scrollToCustomRadar() {
@@ -919,8 +919,8 @@ function renderTopSkills(skillAverages) {
 
 // ==================== HEATMAP ====================
 
-function renderHeatmap(sortBy = 'name') {
-    const data = getData();
+async function renderHeatmap(sortBy = 'name') {
+    const data = await getData();
     const container = document.getElementById('heatmapContainer');
 
     // Sort resources
@@ -999,8 +999,8 @@ function renderHeatmap(sortBy = 'name') {
 
 // ==================== SEARCH ====================
 
-function renderSearch() {
-    const data = getData();
+async function renderSearch() {
+    const data = await getData();
     const searchInput = document.getElementById('resourceSearch');
     const resultsContainer = document.getElementById('searchResults');
 
@@ -1038,37 +1038,66 @@ function displaySearchResults(resources) {
             <div class="resource-card" data-resource-id="${eng.id}">
                 <h4>${eng.name}</h4>
                 <p>${eng.email}</p>
-                <p><strong>${subSkillCount}</strong> skills <small style="color: #9ca3af;">(Click: Profile | Dbl-Click: Edit)</small></p>
+                <p><strong>${subSkillCount}</strong> skills</p>
+                <div class="resource-card-actions">
+                    <button class="btn-view" data-resource-id="${eng.id}">View</button>
+                    <button class="btn-edit" data-resource-id="${eng.id}">Edit Skills</button>
+                </div>
             </div>
         `;
     }).join('');
 
-    // Add event listeners for cards
+    // Add event listeners for buttons and hover
     const cards = resultsContainer.querySelectorAll('.resource-card');
-    cards.forEach(card => {
+    console.log('Setting up event listeners for', cards.length, 'cards');
+
+    cards.forEach((card, index) => {
         const resourceId = card.getAttribute('data-resource-id');
         const resource = resources.find(e => e.id === resourceId);
 
-        // Single click: show profile
-        card.addEventListener('click', () => {
-            showResourceProfile(resourceId);
-        });
+        if (!resource) {
+            console.warn('Resource not found for card:', resourceId);
+            return;
+        }
 
-        // Double click: open edit modal
-        card.addEventListener('dblclick', (e) => {
-            e.stopPropagation();
-            openResourceModal(resourceId);
-        });
+        // View button
+        const viewBtn = card.querySelector('.btn-view');
+        if (viewBtn) {
+            viewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showResourceProfile(resourceId);
+            });
+        }
 
-        // Hover: show tooltip with 250ms delay and fade-in
+        // Edit button
+        const editBtn = card.querySelector('.btn-edit');
+        if (editBtn) {
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openResourceModal(resourceId);
+            });
+        }
+
+        // Hover: show tooltip with 250ms delay (0.25 seconds)
         let hoverTimeout;
         card.addEventListener('mouseenter', (e) => {
+            console.log('MOUSEENTER on card for:', resource.name, 'Target:', e.target.tagName);
+
+            // Don't show tooltip if hovering over buttons
+            if (e.target.tagName === 'BUTTON') {
+                console.log('Skipping tooltip - hovering over button');
+                return;
+            }
+
+            console.log('Starting 250ms timeout for tooltip');
             hoverTimeout = setTimeout(() => {
-                showResourceTooltip(e.currentTarget, resource);
-            }, 250);
+                console.log('Timeout fired - showing tooltip now');
+                showResourceTooltip(card, resource);
+            }, 250); // 250 milliseconds = 0.25 seconds
         });
 
-        card.addEventListener('mouseleave', () => {
+        card.addEventListener('mouseleave', (e) => {
+            console.log('MOUSELEAVE from card');
             clearTimeout(hoverTimeout);
             hideResourceTooltip();
         });
@@ -1076,6 +1105,9 @@ function displaySearchResults(resources) {
 }
 
 function showResourceTooltip(cardElement, resource) {
+    // Check if element still exists
+    if (!cardElement || !resource) return;
+
     // Remove any existing tooltip
     hideResourceTooltip();
 
@@ -1175,8 +1207,8 @@ function hideResourceTooltip() {
     }
 }
 
-function showResourceProfile(resourceId) {
-    const data = getData();
+async function showResourceProfile(resourceId) {
+    const data = await getData();
     const resource = data.resources.find(e => e.id === resourceId);
 
     if (!resource) return;
@@ -1397,7 +1429,7 @@ async function addResource() {
 
         // Clear cache and refresh UI
         clearDataCache();
-        alert(`Resource "${name}" added successfully!`);
+        console.log(`Resource "${name}" added successfully!`);
         await populateResourceSelect();
         await renderDashboard();
     } catch (error) {
@@ -1406,7 +1438,7 @@ async function addResource() {
     }
 }
 
-function onResourceSelect() {
+async function onResourceSelect() {
     const resourceId = document.getElementById('selectResource').value;
 
     if (!resourceId) {
@@ -1421,7 +1453,7 @@ function onResourceSelect() {
     document.getElementById('changePassword').disabled = false;
     document.getElementById('deleteResource').disabled = false;
 
-    const data = getData();
+    const data = await getData();
     const resource = data.resources.find(e => e.id === resourceId);
 
     // Display skills editor with accordion for sub-skills
@@ -1515,7 +1547,7 @@ async function updateResource() {
 
         // Clear cache and refresh UI
         clearDataCache();
-        alert(`Resource updated successfully! Main skills recalculated from sub-skills.`);
+        console.log(`Resource updated successfully! Main skills recalculated from sub-skills.`);
         await renderDashboard();
 
         // Refresh the editor to show updated values
@@ -1554,7 +1586,7 @@ async function deleteResource() {
 
         // Clear cache and refresh UI
         clearDataCache();
-        alert(`Resource "${resource.name}" deleted successfully!`);
+        console.log(`Resource "${resource.name}" deleted successfully!`);
         document.getElementById('selectResource').value = '';
         document.getElementById('resourceSkillsEdit').innerHTML = '';
         document.getElementById('updateResource').disabled = true;
@@ -1600,7 +1632,7 @@ async function addMainSkill() {
 
         // Clear cache and refresh UI
         clearDataCache();
-        alert(`Main skill category "${name}" added successfully!`);
+        console.log(`Main skill category "${name}" added successfully!`);
         await populateMainSkillSelect();
         await renderDashboard();
     } catch (error) {
@@ -1609,7 +1641,7 @@ async function addMainSkill() {
     }
 }
 
-function onMainSkillSelect() {
+async function onMainSkillSelect() {
     const skillId = document.getElementById('selectMainSkill').value;
 
     if (!skillId) {
@@ -1624,18 +1656,18 @@ function onMainSkillSelect() {
     document.getElementById('editMainSkill').disabled = false;
     document.getElementById('subSkillsManagement').style.display = 'block';
 
-    const data = getData();
+    const data = await getData();
     const mainSkill = data.skills.find(s => s.id === skillId);
 
     // Display sub-skills list
     displaySubSkills(mainSkill);
 }
 
-function startEditMainSkill() {
+async function startEditMainSkill() {
     const skillId = document.getElementById('selectMainSkill').value;
     if (!skillId) return;
 
-    const data = getData();
+    const data = await getData();
     const mainSkill = data.skills.find(s => s.id === skillId);
 
     if (!mainSkill) return;
@@ -1693,7 +1725,7 @@ async function saveMainSkillName() {
 
         // Clear cache and refresh UI
         clearDataCache();
-        alert(`Skill category updated successfully!`);
+        console.log(`Skill category updated successfully!`);
 
         // Refresh the select dropdown
         await populateMainSkillSelect();
@@ -1722,11 +1754,12 @@ function displaySubSkills(mainSkill) {
     html += '<div class="sub-skills-grid">';
 
     mainSkill.subSkills.forEach(subSkill => {
+        const subSkillName = typeof subSkill === 'string' ? subSkill : subSkill.name;
         html += `
-            <div class="sub-skill-tag" data-subskill="${subSkill.replace(/"/g, '&quot;')}">
-                <span class="sub-skill-name">${subSkill}</span>
-                <button class="edit-sub-skill-btn" onclick="startEditSubSkill('${mainSkill.id}', '${subSkill.replace(/'/g, "\\'")}')">✎</button>
-                <button class="delete-sub-skill-btn" onclick="deleteSubSkill('${mainSkill.id}', '${subSkill.replace(/'/g, "\\'")}')">×</button>
+            <div class="sub-skill-tag" data-subskill="${subSkillName.replace(/"/g, '&quot;')}">
+                <span class="sub-skill-name">${subSkillName}</span>
+                <button class="edit-sub-skill-btn" onclick="startEditSubSkill('${mainSkill.id}', '${subSkillName.replace(/'/g, "\\'")}')">✎</button>
+                <button class="delete-sub-skill-btn" onclick="deleteSubSkill('${mainSkill.id}', '${subSkillName.replace(/'/g, "\\'")}')">×</button>
             </div>
         `;
     });
@@ -1760,7 +1793,7 @@ async function addSubSkill() {
 
         // Clear cache and refresh UI
         clearDataCache();
-        alert(`Sub-skill "${subSkillName}" added successfully!`);
+        console.log(`Sub-skill "${subSkillName}" added successfully!`);
 
         // Refresh sub-skills display
         const data = await getData();
@@ -1790,7 +1823,7 @@ async function deleteSubSkill(mainSkillId, subSkillName) {
 
         // Clear cache and refresh UI
         clearDataCache();
-        alert(`Sub-skill "${subSkillName}" deleted successfully!`);
+        console.log(`Sub-skill "${subSkillName}" deleted successfully!`);
 
         // Refresh display
         const updatedData = await getData();
@@ -1837,7 +1870,7 @@ function startEditSubSkill(mainSkillId, subSkillName) {
     });
 }
 
-function saveSubSkillEdit(mainSkillId, oldName, newName) {
+async function saveSubSkillEdit(mainSkillId, oldName, newName) {
     newName = newName.trim();
 
     if (!newName) {
@@ -1850,7 +1883,7 @@ function saveSubSkillEdit(mainSkillId, oldName, newName) {
         return;
     }
 
-    const data = getData();
+    const data = await getData();
     const mainSkill = data.skills.find(s => s.id === mainSkillId);
 
     // Check if new name already exists
@@ -1877,14 +1910,14 @@ function saveSubSkillEdit(mainSkillId, oldName, newName) {
     });
 
     saveData(data);
-    alert(`Sub-skill renamed from "${oldName}" to "${newName}"!`);
+    console.log(`Sub-skill renamed from "${oldName}" to "${newName}"!`);
 
     displaySubSkills(mainSkill);
     renderDashboard();
 }
 
-function cancelSubSkillEdit(mainSkillId) {
-    const data = getData();
+async function cancelSubSkillEdit(mainSkillId) {
+    const data = await getData();
     const mainSkill = data.skills.find(s => s.id === mainSkillId);
     displaySubSkills(mainSkill);
 }
@@ -1907,7 +1940,7 @@ async function deleteMainSkill() {
 
         // Clear cache and refresh UI
         clearDataCache();
-        alert(`Main skill category "${mainSkill.name}" deleted successfully!`);
+        console.log(`Main skill category "${mainSkill.name}" deleted successfully!`);
 
         document.getElementById('selectMainSkill').value = '';
         document.getElementById('deleteMainSkill').disabled = true;
@@ -1921,8 +1954,8 @@ async function deleteMainSkill() {
     }
 }
 
-function exportData() {
-    const data = getData();
+async function exportData() {
+    const data = await getData();
     const dataStr = JSON.stringify(data, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
@@ -1950,7 +1983,7 @@ function importData(event) {
             const confirmed = await showConfirmModal('This will replace all current data. Continue?');
             if (confirmed) {
                 saveData(importedData);
-                alert('Data imported successfully!');
+                console.log('Data imported successfully!');
                 location.reload();
             }
         } catch (error) {
@@ -1967,7 +2000,7 @@ async function resetData() {
     }
 
     saveData(sampleData);
-    alert('Data reset to sample data!');
+    console.log('Data reset to sample data!');
     location.reload();
 }
 
@@ -1994,10 +2027,7 @@ async function populateSubSkillCheckboxes() {
         if (skillCategory.subSkills && skillCategory.subSkills.length > 0) {
             // Create collapsible category section
             const categorySection = document.createElement('div');
-            categorySection.className = 'collapsible-category';
-            if (index === 0) {
-                categorySection.classList.add('expanded'); // First section open by default
-            }
+            categorySection.className = 'collapsible-category expanded'; // All sections open by default
 
             // Create category header with select-all
             const header = document.createElement('div');
@@ -2006,7 +2036,7 @@ async function populateSubSkillCheckboxes() {
             // Toggle icon
             const toggleIcon = document.createElement('span');
             toggleIcon.className = 'toggle-icon';
-            toggleIcon.textContent = index === 0 ? '▼' : '▶';
+            toggleIcon.textContent = '▼'; // All expanded by default
 
             // Select-all checkbox
             const selectAllCheckbox = document.createElement('input');
@@ -2038,16 +2068,17 @@ async function populateSubSkillCheckboxes() {
                 const checkboxItem = document.createElement('div');
                 checkboxItem.className = 'checkbox-item';
 
+                const subSkillName = typeof subSkill === 'string' ? subSkill : subSkill.name;
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.id = `subskill-${subSkill.replace(/\s+/g, '-')}`;
-                checkbox.value = subSkill;
+                checkbox.id = `subskill-${subSkillName.replace(/\s+/g, '-')}`;
+                checkbox.value = subSkillName;
                 checkbox.dataset.category = skillCategory.name;
                 checkbox.className = 'subskill-checkbox';
 
                 const label = document.createElement('label');
                 label.htmlFor = checkbox.id;
-                label.textContent = subSkill;
+                label.textContent = subSkillName;
 
                 checkboxItem.appendChild(checkbox);
                 checkboxItem.appendChild(label);
@@ -2093,10 +2124,13 @@ async function populateSubSkillCheckboxes() {
 }
 
 function getTop10ResourcesForSubSkill(subSkillName, category) {
-    const data = getData();
+    // Use cached data directly (can't use await in synchronous context)
+    if (!dataCache || !dataCache.resources) {
+        return [];
+    }
 
     // Get all engineers with this sub-skill
-    const engineersWithSkill = data.resources
+    const engineersWithSkill = dataCache.resources
         .map(eng => {
             const level = eng.subSkills?.[category]?.[subSkillName] || 0;
             return {
@@ -2111,8 +2145,8 @@ function getTop10ResourcesForSubSkill(subSkillName, category) {
     return engineersWithSkill;
 }
 
-function getTeamAverageForSubSkill(subSkillName, category) {
-    const data = getData();
+async function getTeamAverageForSubSkill(subSkillName, category) {
+    const data = await getData();
 
     const levels = data.resources
         .map(eng => eng.subSkills?.[category]?.[subSkillName] || 0)
@@ -2124,12 +2158,17 @@ function getTeamAverageForSubSkill(subSkillName, category) {
     return sum / levels.length;
 }
 
-function renderCustomRadarChart() {
+async function renderCustomRadarChart() {
     const container = document.getElementById('subSkillCheckboxes');
     const selectedCheckboxes = container.querySelectorAll('input[type="checkbox"]:checked');
 
     if (selectedCheckboxes.length === 0) {
-        alert('Please select at least one sub-skill to display.');
+        console.log('No sub-skills selected for custom radar chart');
+        // Hide chart or show message
+        const chartContainer = document.getElementById('customRadarChart');
+        if (chartContainer) {
+            chartContainer.style.display = 'none';
+        }
         return;
     }
 
@@ -2137,21 +2176,26 @@ function renderCustomRadarChart() {
     const values = [];
     const skillsData = []; // Store category info for tooltip
 
-    selectedCheckboxes.forEach(checkbox => {
+    // Process checkboxes asynchronously
+    for (const checkbox of selectedCheckboxes) {
         const subSkillName = checkbox.value;
         const category = checkbox.dataset.category;
-        const avgLevel = getTeamAverageForSubSkill(subSkillName, category);
+        const avgLevel = await getTeamAverageForSubSkill(subSkillName, category);
 
         labels.push(subSkillName);
         values.push(avgLevel);
         skillsData.push({ name: subSkillName, category: category });
-    });
+    }
 
     const ctx = document.getElementById('customRadarChart').getContext('2d');
 
     if (customRadarChart) {
         customRadarChart.destroy();
     }
+
+    // Show chart canvas
+    const canvas = document.getElementById('customRadarChart');
+    if (canvas) canvas.style.display = 'block';
 
     customRadarChart = new Chart(ctx, {
         type: 'radar',
@@ -2199,10 +2243,14 @@ function renderCustomRadarChart() {
                         afterLabel: function(context) {
                             const index = context.dataIndex;
                             const skillData = skillsData[index];
-                            const data = getData();
+
+                            // Use cached data directly (can't use await in tooltip callbacks)
+                            if (!dataCache || !dataCache.resources) {
+                                return '';
+                            }
 
                             // Get all resources with this sub-skill
-                            const resourcesWithSkill = data.resources
+                            const resourcesWithSkill = dataCache.resources
                                 .map(res => {
                                     const level = res.subSkills?.[skillData.category]?.[skillData.name] || 0;
                                     return {
@@ -2258,69 +2306,45 @@ function filterSubSkills() {
     const searchInput = document.getElementById('subSkillSearch');
     const searchTerm = searchInput.value.toLowerCase().trim();
     const container = document.getElementById('subSkillCheckboxes');
-    const checkboxItems = container.querySelectorAll('.checkbox-item');
-    const categoryHeaders = container.querySelectorAll('.skill-category-header');
-
+    const categories = container.querySelectorAll('.collapsible-category');
     let visibleCount = 0;
-    let currentCategory = null;
-    let categoryHasVisibleItems = false;
 
     // If search is empty, show everything
     if (searchTerm === '') {
-        checkboxItems.forEach(item => item.style.display = 'flex');
-        categoryHeaders.forEach(header => header.style.display = 'block');
-        visibleCount = checkboxItems.length;
+        categories.forEach(category => {
+            category.style.display = 'block';
+            const items = category.querySelectorAll('.checkbox-item');
+            items.forEach(item => item.style.display = 'flex');
+            visibleCount += items.length;
+        });
         document.getElementById('searchCount').textContent = `${visibleCount} sub-skills`;
         return;
     }
 
-    // Hide all items first
-    checkboxItems.forEach(item => item.style.display = 'none');
-    categoryHeaders.forEach(header => header.style.display = 'none');
+    // Filter categories and items based on search term
+    categories.forEach(category => {
+        const items = category.querySelectorAll('.checkbox-item');
+        const categoryName = category.querySelector('.category-name');
+        const categoryText = categoryName ? categoryName.textContent.toLowerCase() : '';
+        let categoryHasVisible = false;
 
-    // Helper function to check if search term matches (word boundary aware)
-    function matchesSearch(text, term) {
-        text = text.toLowerCase();
-        term = term.toLowerCase();
+        items.forEach(item => {
+            const label = item.querySelector('label');
+            const skillName = label ? label.textContent.toLowerCase() : '';
 
-        // Check if term appears as a whole word or at the start of a word
-        // Use word boundary regex for better matching
-        const regex = new RegExp('\\b' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-        return regex.test(text);
-    }
-
-    // Filter items based on search term
-    const allElements = Array.from(container.children);
-
-    allElements.forEach(element => {
-        if (element.classList.contains('skill-category-header')) {
-            // Save reference to current category header
-            if (currentCategory) {
-                // Show previous category if it had visible items
-                if (categoryHasVisibleItems) {
-                    currentCategory.style.display = 'block';
-                }
-            }
-            currentCategory = element;
-            categoryHasVisibleItems = false;
-        } else if (element.classList.contains('checkbox-item')) {
-            const label = element.querySelector('label');
-            const skillName = label.textContent;
-            const categoryName = currentCategory ? currentCategory.textContent : '';
-
-            // Match if search term is in skill name OR category name (with word boundaries)
-            if (matchesSearch(skillName, searchTerm) || matchesSearch(categoryName, searchTerm)) {
-                element.style.display = 'flex';
-                categoryHasVisibleItems = true;
+            // Match if search term is in skill name OR category name
+            if (skillName.includes(searchTerm) || categoryText.includes(searchTerm)) {
+                item.style.display = 'flex';
+                categoryHasVisible = true;
                 visibleCount++;
+            } else {
+                item.style.display = 'none';
             }
-        }
-    });
+        });
 
-    // Handle the last category
-    if (currentCategory && categoryHasVisibleItems) {
-        currentCategory.style.display = 'block';
-    }
+        // Show/hide entire category based on whether it has visible items
+        category.style.display = categoryHasVisible ? 'block' : 'none';
+    });
 
     // Update count display
     const countText = visibleCount === 1 ? '1 sub-skill' : `${visibleCount} sub-skills`;
@@ -2328,9 +2352,22 @@ function filterSubSkills() {
 }
 
 function setupCustomChartEventListeners() {
-    document.getElementById('updateCustomChart').addEventListener('click', renderCustomRadarChart);
+    const updateBtn = document.getElementById('updateCustomChart');
+    const clearBtn = document.getElementById('clearSubSkills');
+    const searchInput = document.getElementById('subSkillSearch');
 
-    document.getElementById('clearSubSkills').addEventListener('click', () => {
+    if (!updateBtn || !clearBtn || !searchInput) {
+        console.error('Custom chart elements not found');
+        return;
+    }
+
+    updateBtn.addEventListener('click', async () => {
+        console.log('Update chart button clicked');
+        await renderCustomRadarChart();
+    });
+
+    clearBtn.addEventListener('click', () => {
+        console.log('Clear selections clicked');
         const checkboxes = document.querySelectorAll('#subSkillCheckboxes input[type="checkbox"]');
         checkboxes.forEach(cb => cb.checked = false);
 
@@ -2338,23 +2375,35 @@ function setupCustomChartEventListeners() {
             customRadarChart.destroy();
             customRadarChart = null;
         }
+
+        // Hide chart canvas
+        const canvas = document.getElementById('customRadarChart');
+        if (canvas) canvas.style.display = 'none';
     });
 
     // Setup search filter
-    const searchInput = document.getElementById('subSkillSearch');
-    searchInput.addEventListener('input', filterSubSkills);
+    searchInput.addEventListener('input', () => {
+        console.log('Search input changed:', searchInput.value);
+        filterSubSkills();
+    });
 
     // Initialize count
-    const totalCount = document.querySelectorAll('#subSkillCheckboxes .checkbox-item').length;
-    document.getElementById('searchCount').textContent = `${totalCount} sub-skills`;
+    setTimeout(() => {
+        const totalCount = document.querySelectorAll('#subSkillCheckboxes .checkbox-item').length;
+        const countElement = document.getElementById('searchCount');
+        if (countElement) {
+            countElement.textContent = `${totalCount} sub-skills`;
+        }
+        console.log('Initialized sub-skill checkboxes:', totalCount);
+    }, 500);
 }
 
 // ==================== ENGINEER MODAL ====================
 
 let currentModalResourceId = null;
 
-function openResourceModal(resourceId) {
-    const data = getData();
+async function openResourceModal(resourceId) {
+    const data = await getData();
     const resource = data.resources.find(e => e.id === resourceId);
 
     if (!resource) return;
@@ -2397,7 +2446,9 @@ function openResourceModal(resourceId) {
 
         // Add all sub-skills for this category
         if (skillCategory.subSkills && skillCategory.subSkills.length > 0) {
-            skillCategory.subSkills.forEach(subSkillName => {
+            skillCategory.subSkills.forEach(subSkill => {
+                // Handle both string and object formats
+                const subSkillName = typeof subSkill === 'string' ? subSkill : subSkill.name;
                 const currentLevel = resource.subSkills?.[skillCategory.name]?.[subSkillName] || 0;
 
                 const skillItem = document.createElement('div');
@@ -2494,7 +2545,7 @@ async function saveNewPassword() {
 
         // Clear cache
         clearDataCache();
-        alert('Password updated successfully!');
+        console.log('Password updated successfully!');
         closeChangePasswordModal();
     } catch (error) {
         console.error('Failed to update password:', error);
@@ -2551,11 +2602,11 @@ function showConfirmModal(message) {
     });
 }
 
-function saveResourceSkills() {
+async function saveResourceSkills() {
     if (!currentModalResourceId) return;
 
-    const data = getData();
-    const resource =data.resources.find(e => e.id === currentModalResourceId);
+    const data = await getData();
+    const resource = data.resources.find(e => e.id === currentModalResourceId);
 
     if (!resource) return;
 
@@ -2604,16 +2655,20 @@ function saveResourceSkills() {
         }
     });
 
-    // Save data
-    saveData(data);
+    // Save to API
+    try {
+        await API.updateResource(currentModalResourceId, resource);
 
-    // Close modal
-    closeResourceModal();
+        // Close modal
+        closeResourceModal();
 
-    // Refresh the search results
-    renderSearch();
-
-    alert('Skills updated successfully!');
+        // Clear cache and refresh the search results
+        clearDataCache();
+        await renderSearch();
+    } catch (error) {
+        console.error('Error saving skills:', error);
+        alert('Failed to save skills. Please try again.');
+    }
 }
 
 // Close modal when clicking outside

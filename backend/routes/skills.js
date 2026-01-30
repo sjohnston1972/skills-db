@@ -100,6 +100,31 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// GET /api/skills/:id/sub-skills - Get sub-skills for a main skill
+router.get('/:id/sub-skills', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Get sub-skills
+        const subSkillsResult = await db.query(
+            'SELECT id, name FROM sub_skills WHERE main_skill_id = $1 ORDER BY name',
+            [id]
+        );
+
+        res.json({
+            success: true,
+            data: subSkillsResult.rows
+        });
+
+    } catch (error) {
+        console.error('Error fetching sub-skills:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // POST /api/skills - Create new main skill
 router.post('/', async (req, res) => {
     try {

@@ -29,6 +29,32 @@ app.use('/api/data', dataRoutes);
 app.use('/api/resources', resourcesRoutes);
 app.use('/api/skills', skillsRoutes);
 
+// Metadata endpoint
+app.get('/api/metadata', async (req, res) => {
+    try {
+        const result = await db.query('SELECT key, value FROM metadata ORDER BY key');
+
+        // Convert to key-value object with camelCase keys
+        const metadata = {};
+        result.rows.forEach(row => {
+            // Convert snake_case to camelCase
+            const camelKey = row.key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            metadata[camelKey] = row.value;
+        });
+
+        res.json({
+            success: true,
+            data: metadata
+        });
+    } catch (error) {
+        console.error('Error fetching metadata:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
     try {

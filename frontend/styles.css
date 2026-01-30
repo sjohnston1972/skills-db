@@ -468,7 +468,6 @@ h3 {
     padding: 1.5rem;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
 }
@@ -476,6 +475,52 @@ h3 {
 .resource-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.resource-card-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    justify-content: space-between;
+}
+
+.resource-card-actions button {
+    flex: 1;
+    padding: 0.4rem 0.8rem;
+    border: 2px solid;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-view {
+    background: white;
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-view:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.btn-edit {
+    background: white;
+    color: #10b981;
+    border-color: #10b981;
+}
+
+.btn-edit:hover {
+    background: #10b981;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
 }
 
 .resource-card h4 {
