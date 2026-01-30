@@ -28,7 +28,10 @@ const API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(skill)
         });
-        if (!response.ok) throw new Error('Failed to create skill');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || 'Failed to create skill');
+        }
         const result = await response.json();
         return result.data;
     },
@@ -101,7 +104,10 @@ const API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(resource)
         });
-        if (!response.ok) throw new Error('Failed to create resource');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || 'Failed to create resource');
+        }
         const result = await response.json();
         return result.data;
     },
@@ -1121,22 +1127,54 @@ async function renderHeatmap(sortBy = 'name') {
 
 // ==================== SEARCH ====================
 
+let resourcesEventListenersAdded = false;
+
 async function renderSearch() {
     const data = await getData();
     const searchInput = document.getElementById('resourceSearch');
     const resultsContainer = document.getElementById('searchResults');
 
-    // Display all engineers initially
+    // Display all resources initially
     displaySearchResults(data.resources);
 
-    searchInput.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        const filtered = data.resources.filter(eng =>
-            eng.name.toLowerCase().includes(query) ||
-            eng.email.toLowerCase().includes(query)
-        );
-        displaySearchResults(filtered);
-    });
+    // Only add event listeners once
+    if (!resourcesEventListenersAdded) {
+        // Search input listener
+        searchInput.addEventListener('input', async (e) => {
+            const currentData = await getData();
+            const query = e.target.value.toLowerCase();
+            const filtered = currentData.resources.filter(eng =>
+                eng.name.toLowerCase().includes(query) ||
+                (eng.email && eng.email.toLowerCase().includes(query)) ||
+                (eng.email && eng.email.toLowerCase().includes(query))
+            );
+            displaySearchResults(filtered);
+        });
+
+        // Event delegation for all button clicks
+        resultsContainer.addEventListener('click', async (e) => {
+            const target = e.target;
+
+            // Delete button
+            if (target.classList.contains('delete-resource-btn')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const resourceId = target.dataset.resourceId;
+                const resourceName = target.dataset.resourceName;
+                console.log('Delete resource button clicked!', resourceId, resourceName);
+                try {
+                    await deleteResource(resourceId, resourceName);
+                } catch (error) {
+                    console.error('Error deleting resource:', error);
+                }
+            }
+
+            // View button - handled by existing code below
+            // Edit button - handled by existing code below
+        });
+
+        resourcesEventListenersAdded = true;
+    }
 }
 
 function displaySearchResults(resources) {
@@ -1156,14 +1194,23 @@ function displaySearchResults(resources) {
             });
         }
 
+        const safeName = eng.name.replace(/"/g, '&quot;');
+
+        // Debug: Log what fields this resource has
+        if (!eng.email) {
+            console.log('Resource missing email:', eng.id, eng.name, 'Fields:', Object.keys(eng));
+        }
+
+        const displayEmail = eng.email || 'No email/username';
         return `
-            <div class="resource-card" data-resource-id="${eng.id}">
+            <div class="resource-card" data-resource-id="${eng.id}" style="position: relative;">
+                <button class="delete-resource-btn" data-resource-id="${eng.id}" data-resource-name="${safeName}">×</button>
                 <h4>${eng.name}</h4>
-                <p>${eng.email}</p>
+                <p style="color: var(--text-light); font-size: 0.9rem;"><strong>Email/Username:</strong> ${displayEmail}</p>
                 <p><strong>${subSkillCount}</strong> skills</p>
                 <div class="resource-card-actions">
                     <button class="btn-view" data-resource-id="${eng.id}">View</button>
-                    <button class="btn-edit" data-resource-id="${eng.id}">Edit Skills</button>
+                    <button class="btn-edit" data-resource-id="${eng.id}">Edit</button>
                 </div>
             </div>
         `;
@@ -1182,12 +1229,26 @@ function displaySearchResults(resources) {
             return;
         }
 
+        // Delete button - prevent tooltip
+        const deleteBtn = card.querySelector('.delete-resource-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('mouseenter', (e) => {
+                e.stopPropagation();
+                clearTimeout(hoverTimeout);
+                hideResourceTooltip();
+            });
+        }
+
         // View button
         const viewBtn = card.querySelector('.btn-view');
         if (viewBtn) {
             viewBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 showResourceProfile(resourceId);
+            });
+            viewBtn.addEventListener('mouseenter', (e) => {
+                e.stopPropagation();
+                clearTimeout(hoverTimeout);
             });
         }
 
@@ -1198,16 +1259,32 @@ function displaySearchResults(resources) {
                 e.stopPropagation();
                 openResourceModal(resourceId);
             });
+            editBtn.addEventListener('mouseenter', (e) => {
+                e.stopPropagation();
+                clearTimeout(hoverTimeout);
+            });
         }
 
         // Hover: show tooltip with 250ms delay (0.25 seconds)
         let hoverTimeout;
         card.addEventListener('mouseenter', (e) => {
-            console.log('MOUSEENTER on card for:', resource.name, 'Target:', e.target.tagName);
+            console.log('MOUSEENTER on card for:', resource.name, 'Target:', e.target.tagName, 'Classes:', e.target.className);
 
-            // Don't show tooltip if hovering over buttons
-            if (e.target.tagName === 'BUTTON') {
+            // Don't show tooltip if hovering over buttons or delete button
+            if (e.target.tagName === 'BUTTON' ||
+                e.target.classList.contains('delete-resource-btn') ||
+                e.target.classList.contains('btn-view') ||
+                e.target.classList.contains('btn-edit')) {
                 console.log('Skipping tooltip - hovering over button');
+                return;
+            }
+
+            // Check if the actual hover target is a button (in case of event delegation)
+            if (e.relatedTarget && e.relatedTarget.classList &&
+                (e.relatedTarget.classList.contains('delete-resource-btn') ||
+                 e.relatedTarget.classList.contains('btn-view') ||
+                 e.relatedTarget.classList.contains('btn-edit'))) {
+                console.log('Skipping tooltip - coming from button');
                 return;
             }
 
@@ -1465,6 +1542,8 @@ function renderResourceRadar(resource, allSkills) {
 
 let currentModalSkillId = null;
 
+let skillsEventListenersAdded = false;
+
 async function renderSkills() {
     const data = await getData();
     const searchInput = document.getElementById('skillSearch');
@@ -1473,14 +1552,57 @@ async function renderSkills() {
     // Display all skills initially
     displaySkillCards(data.skills);
 
-    searchInput.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        const filtered = data.skills.filter(skill =>
-            skill.name.toLowerCase().includes(query) ||
-            (skill.skillType && skill.skillType.toLowerCase().includes(query))
-        );
-        displaySkillCards(filtered);
-    });
+    // Only add event listeners once
+    if (!skillsEventListenersAdded) {
+        // Search input listener
+        searchInput.addEventListener('input', async (e) => {
+            const currentData = await getData();
+            const query = e.target.value.toLowerCase();
+            const filtered = currentData.skills.filter(skill =>
+                skill.name.toLowerCase().includes(query) ||
+                (skill.skillType && skill.skillType.toLowerCase().includes(query))
+            );
+            displaySkillCards(filtered);
+        });
+
+        // Event delegation for all button clicks
+        resultsContainer.addEventListener('click', async (e) => {
+            const target = e.target;
+
+            // Delete button
+            if (target.classList.contains('delete-skill-btn')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const skillId = target.dataset.skillId;
+                const skillName = target.dataset.skillName;
+                console.log('Delete button clicked!', skillId, skillName);
+                console.log('deleteMainSkill function type:', typeof deleteMainSkill);
+                console.log('About to call deleteMainSkill...');
+                try {
+                    const result = await deleteMainSkill(skillId, skillName);
+                    console.log('deleteMainSkill completed, result:', result);
+                } catch (error) {
+                    console.error('Error calling deleteMainSkill:', error, error.stack);
+                }
+            }
+
+            // View button
+            if (target.classList.contains('btn-view')) {
+                e.preventDefault();
+                const skillId = target.dataset.skillId;
+                viewSkillDetails(skillId);
+            }
+
+            // Edit button
+            if (target.classList.contains('btn-edit')) {
+                e.preventDefault();
+                const skillId = target.dataset.skillId;
+                openSkillModal(skillId);
+            }
+        });
+
+        skillsEventListenersAdded = true;
+    }
 }
 
 function displaySkillCards(skills) {
@@ -1495,9 +1617,11 @@ function displaySkillCards(skills) {
         const subSkillCount = skill.subSkills ? skill.subSkills.length : 0;
         const typeColor = skill.skillType === 'non-technical' ? '#10b981' : '#2563eb';
         const typeBadge = skill.skillType === 'non-technical' ? 'Non-Tech' : 'Tech';
+        const safeName = skill.name.replace(/"/g, '&quot;');
 
         return `
-            <div class="resource-card" data-skill-id="${skill.id}">
+            <div class="resource-card" data-skill-id="${skill.id}" style="position: relative;">
+                <button class="delete-skill-btn" data-skill-id="${skill.id}" data-skill-name="${safeName}">×</button>
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
                     <h4 style="margin: 0;">${skill.name}</h4>
                     <span style="background: ${typeColor}; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${typeBadge}</span>
@@ -1505,12 +1629,13 @@ function displaySkillCards(skills) {
                 <p style="color: var(--text-light); font-size: 0.9rem; margin: 0.5rem 0;"><strong>Weight:</strong> ${skill.weight || 5}/10</p>
                 <p style="color: var(--text-light); font-size: 0.9rem;"><strong>${subSkillCount}</strong> sub-skills</p>
                 <div class="resource-card-actions">
-                    <button class="btn-view" onclick="viewSkillDetails('${skill.id}')">View</button>
-                    <button class="btn-edit" onclick="openSkillModal('${skill.id}')">Edit Sub-Skills</button>
+                    <button class="btn-view" data-skill-id="${skill.id}">View</button>
+                    <button class="btn-edit" data-skill-id="${skill.id}">Edit</button>
                 </div>
             </div>
         `;
     }).join('');
+    // Event listeners are handled by event delegation in renderSkills()
 }
 
 async function viewSkillDetails(skillId) {
@@ -1535,18 +1660,53 @@ async function openSkillModal(skillId) {
 
     currentModalSkillId = skillId;
 
-    document.getElementById('modalSkillName').textContent = skill.name;
+    document.getElementById('modalSkillNameInput').value = skill.name;
     document.getElementById('modalSkillType').textContent = skill.skillType || 'technical';
-    document.getElementById('modalSkillWeight').textContent = `${skill.weight || 5}/10`;
+    document.getElementById('modalSkillWeightInput').value = skill.weight || 5;
 
     // Display sub-skills
     displayModalSubSkills(skill.subSkills || []);
 
     // Show modal
-    document.getElementById('skillModal').classList.add('show');
+    const modal = document.getElementById('skillModal');
+    console.log('Opening skill modal, modal element:', modal);
+    modal.classList.add('show');
 
-    // Set up add button
-    document.getElementById('addSubSkillModal').onclick = async () => {
+    // Test: Add click handler to modal backdrop
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            console.log('Modal backdrop clicked');
+            closeSkillModal();
+        }
+    };
+
+    // Set up close button listener
+    const closeBtn = modal.querySelector('.modal-close');
+    console.log('Close button found:', closeBtn);
+    if (closeBtn) {
+        // Remove existing listeners by cloning
+        const newCloseBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        console.log('Event listener attached to close button');
+        newCloseBtn.addEventListener('click', (e) => {
+            console.log('!!! CLOSE BUTTON CLICKED !!!');
+            e.preventDefault();
+            e.stopPropagation();
+            closeSkillModal();
+        });
+
+        // Also add test with direct onclick
+        newCloseBtn.onclick = (e) => {
+            console.log('!!! ONCLICK FIRED !!!');
+            e.preventDefault();
+            closeSkillModal();
+        };
+    } else {
+        console.error('Close button NOT found in modal');
+    }
+
+    // Set up add sub-skill button - just adds to UI, saves on "Save & Close"
+    document.getElementById('addSubSkillModal').onclick = () => {
         const input = document.getElementById('newSubSkillModal');
         const subSkillName = input.value.trim();
         if (!subSkillName) {
@@ -1554,18 +1714,18 @@ async function openSkillModal(skillId) {
             return;
         }
 
-        try {
-            await API.createSubSkill(currentModalSkillId, subSkillName);
-            input.value = '';
-            clearDataCache();
-            const updatedData = await getData();
-            const updatedSkill = updatedData.skills.find(s => s.id === currentModalSkillId);
-            displayModalSubSkills(updatedSkill.subSkills || []);
-            await renderSkills(); // Refresh the cards
-        } catch (error) {
-            console.error('Failed to add sub-skill:', error);
-            alert(`Error adding sub-skill: ${error.message}`);
-        }
+        // Get current sub-skills
+        const container = document.getElementById('subSkillsListModal');
+        const currentSubSkills = Array.from(container.querySelectorAll('.sub-skill-name')).map(el => ({
+            name: el.textContent.trim()
+        }));
+
+        // Add the new one
+        currentSubSkills.push({ name: subSkillName });
+
+        // Re-display
+        displayModalSubSkills(currentSubSkills);
+        input.value = '';
     };
 }
 
@@ -1591,27 +1751,305 @@ function displayModalSubSkills(subSkills) {
 }
 
 async function deleteModalSubSkill(subSkillName, subSkillId) {
-    const confirmed = await showConfirmModal(`Are you sure you want to delete the sub-skill "${subSkillName}"? This will remove it from all resources.`);
-    if (!confirmed) return;
+    console.log('Deleting sub-skill:', subSkillName);
+    // Just remove from UI - will be saved on "Save & Close"
+    const container = document.getElementById('subSkillsListModal');
+    const subSkillElements = container.querySelectorAll('.sub-skill-tag');
+    subSkillElements.forEach(el => {
+        if (el.textContent.includes(subSkillName)) {
+            el.remove();
+        }
+    });
+}
+
+async function saveSkillChanges() {
+    if (!currentModalSkillId) return;
+
+    const newName = document.getElementById('modalSkillNameInput').value.trim();
+    const newWeight = parseInt(document.getElementById('modalSkillWeightInput').value);
+
+    if (!newName) {
+        alert('Please enter a skill name');
+        return;
+    }
+
+    if (isNaN(newWeight) || newWeight < 1 || newWeight > 10) {
+        alert('Please enter a weight between 1 and 10');
+        return;
+    }
+
+    // Collect current sub-skills from the UI
+    const subSkillElements = document.querySelectorAll('#subSkillsListModal .sub-skill-name');
+    const subSkills = Array.from(subSkillElements).map(el => el.textContent.trim());
 
     try {
-        await API.deleteSubSkill(currentModalSkillId, subSkillId);
+        await API.updateSkill(currentModalSkillId, {
+            name: newName,
+            weight: newWeight,
+            subSkills: subSkills
+        });
         clearDataCache();
-        const updatedData = await getData();
-        const updatedSkill = updatedData.skills.find(s => s.id === currentModalSkillId);
-        displayModalSubSkills(updatedSkill.subSkills || []);
-        await renderSkills(); // Refresh the cards
+        await renderSkills();
+        closeSkillModal();
+        console.log('Skill changes saved successfully');
     } catch (error) {
-        console.error('Failed to delete sub-skill:', error);
-        alert(`Error deleting sub-skill: ${error.message}`);
+        console.error('Failed to save skill changes:', error);
+        alert(`Error saving skill changes: ${error.message}`);
     }
 }
 
 function closeSkillModal() {
-    document.getElementById('skillModal').classList.remove('show');
+    console.log('Closing skill modal');
+    const modal = document.getElementById('skillModal');
+    if (modal) {
+        modal.classList.remove('show');
+        console.log('Modal show class removed');
+    } else {
+        console.error('skillModal element not found');
+    }
     currentModalSkillId = null;
-    document.getElementById('newSubSkillModal').value = '';
+    const input = document.getElementById('newSubSkillModal');
+    if (input) {
+        input.value = '';
+    }
 }
+
+// Make sure the function is globally accessible
+window.closeSkillModal = closeSkillModal;
+
+async function deleteMainSkill(skillId, skillName) {
+    console.log('!!! DELETE BUTTON CLICKED !!!', 'skillId:', skillId, 'skillName:', skillName);
+    console.log('showConfirmModal function exists:', typeof showConfirmModal);
+
+    try {
+        // Use custom confirm modal
+        console.log('About to call showConfirmModal...');
+        const confirmed = await showConfirmModal(`Are you sure you want to delete "${skillName}"?\n\nThis will remove it from all resources and delete all its sub-skills.`);
+        console.log('Confirmation result:', confirmed);
+
+        if (!confirmed) {
+            console.log('User cancelled deletion');
+            return;
+        }
+
+        console.log('Calling API.deleteSkill...');
+        await API.deleteSkill(skillId);
+        clearDataCache();
+        await renderSkills();
+        console.log('Skill deleted successfully');
+    } catch (error) {
+        console.error('Error in deleteMainSkill:', error);
+        alert(`Error: ${error.message}`);
+    }
+}
+
+async function deleteResource(resourceId, resourceName) {
+    console.log('!!! DELETE RESOURCE CLICKED !!!', 'resourceId:', resourceId, 'resourceName:', resourceName);
+    console.log('About to show confirm modal for resource deletion');
+
+    try {
+        const confirmed = await showConfirmModal(`Are you sure you want to delete "${resourceName}"?\n\nThis will permanently remove this resource and all their skill data.`);
+        console.log('Resource deletion confirmation result:', confirmed);
+
+        if (!confirmed) {
+            console.log('User cancelled deletion');
+            return;
+        }
+
+        console.log('Calling API.deleteResource...');
+        await API.deleteResource(resourceId);
+        clearDataCache();
+        await renderSearch();
+        console.log('Resource deleted successfully');
+    } catch (error) {
+        console.error('Error in deleteResource:', error);
+        alert(`Error: ${error.message}`);
+    }
+}
+
+function openAddSkillModal() {
+    const modal = document.getElementById('addSkillModal');
+    modal.classList.add('show');
+
+    // Set up close button listener
+    const closeBtn = modal.querySelector('.modal-close');
+    if (closeBtn) {
+        const newCloseBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        newCloseBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Close add skill modal clicked via event listener');
+            closeAddSkillModal();
+        });
+    }
+
+    // Track sub-skills being added
+    let newSkillSubSkills = [];
+
+    // Set up add sub-skill button
+    document.getElementById('addNewSkillSubSkillBtn').onclick = () => {
+        const input = document.getElementById('newSkillSubSkillInput');
+        const subSkillName = input.value.trim();
+
+        if (!subSkillName) {
+            alert('Please enter a sub-skill name');
+            return;
+        }
+
+        // Add to list
+        newSkillSubSkills.push(subSkillName);
+        input.value = '';
+
+        // Display updated list
+        displayNewSkillSubSkills(newSkillSubSkills);
+    };
+
+    // Function to display sub-skills in the add modal
+    function displayNewSkillSubSkills(subSkills) {
+        const container = document.getElementById('newSkillSubSkillsList');
+        if (subSkills.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-light); padding: 0.5rem;">No sub-skills added yet</p>';
+            return;
+        }
+
+        container.innerHTML = subSkills.map((subSkillName, index) => `
+            <div class="sub-skill-tag" style="margin: 0.5rem 0;">
+                <span class="sub-skill-name">${subSkillName}</span>
+                <button class="delete-sub-skill-btn" onclick="removeNewSubSkill(${index})">×</button>
+            </div>
+        `).join('');
+    }
+
+    // Function to remove sub-skill from new list
+    window.removeNewSubSkill = (index) => {
+        newSkillSubSkills.splice(index, 1);
+        displayNewSkillSubSkills(newSkillSubSkills);
+    };
+
+    // Initialize empty list display
+    displayNewSkillSubSkills(newSkillSubSkills);
+
+    // Set up create button
+    document.getElementById('createSkillBtn').onclick = async () => {
+        const name = document.getElementById('newSkillName').value.trim();
+        const skillType = document.getElementById('newSkillType').value;
+        const weight = parseInt(document.getElementById('newSkillWeight').value);
+
+        if (!name) {
+            alert('Please enter a skill name');
+            return;
+        }
+
+        if (isNaN(weight) || weight < 1 || weight > 10) {
+            alert('Please enter a weight between 1 and 10');
+            return;
+        }
+
+        try {
+            const skillData = {
+                id: `skill-${Date.now()}`,
+                name: name,
+                category: name, // Use name as category
+                skillType: skillType,
+                weight: weight,
+                subSkills: newSkillSubSkills
+            };
+            console.log('Creating skill with data:', skillData);
+            await API.createSkill(skillData);
+            clearDataCache();
+            await renderSkills();
+            closeAddSkillModal();
+            newSkillSubSkills = []; // Clear the array
+            console.log('Skill created successfully');
+        } catch (error) {
+            console.error('Failed to create skill:', error);
+            alert(`Error creating skill: ${error.message}`);
+        }
+    };
+}
+
+function closeAddSkillModal() {
+    console.log('Closing add skill modal');
+    const modal = document.getElementById('addSkillModal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+    document.getElementById('newSkillName').value = '';
+    document.getElementById('newSkillType').value = 'technical';
+    document.getElementById('newSkillWeight').value = '5';
+    document.getElementById('newSkillSubSkillInput').value = '';
+    document.getElementById('newSkillSubSkillsList').innerHTML = '';
+}
+
+function openAddResourceModal() {
+    const modal = document.getElementById('addResourceModal');
+    modal.classList.add('show');
+
+    // Set up create button
+    document.getElementById('createResourceBtn').onclick = async () => {
+        const name = document.getElementById('newResourceName').value.trim();
+        const email = document.getElementById('newResourceEmail').value.trim();
+        const password = document.getElementById('newResourcePassword').value.trim();
+
+        if (!name) {
+            alert('Please enter a name');
+            return;
+        }
+
+        if (!email) {
+            alert('Please enter an email/username');
+            return;
+        }
+
+        if (!password) {
+            alert('Please enter a password');
+            return;
+        }
+
+        try {
+            const resourceData = {
+                id: `eng-${Date.now()}`,
+                name: name,
+                email: email,
+                password: password
+            };
+            console.log('Creating resource with data:', resourceData);
+            const result = await API.createResource(resourceData);
+            console.log('Create resource result:', result);
+            clearDataCache();
+            await renderSearch();
+            closeAddResourceModal();
+            console.log('Resource created successfully');
+        } catch (error) {
+            console.error('Failed to create resource:', error);
+            alert(`Error creating resource: ${error.message}`);
+        }
+    };
+}
+
+function closeAddResourceModal() {
+    const modal = document.getElementById('addResourceModal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+    document.getElementById('newResourceName').value = '';
+    document.getElementById('newResourceEmail').value = '';
+    document.getElementById('newResourcePassword').value = '';
+}
+
+// Make all skills and resources management functions globally accessible
+window.closeAddSkillModal = closeAddSkillModal;
+window.openAddSkillModal = openAddSkillModal;
+window.openSkillModal = openSkillModal;
+window.saveSkillChanges = saveSkillChanges;
+window.viewSkillDetails = viewSkillDetails;
+window.deleteMainSkill = deleteMainSkill;
+window.deleteResource = deleteResource;
+window.deleteModalSubSkill = deleteModalSubSkill;
+window.displaySkillCards = displaySkillCards;
+window.openAddResourceModal = openAddResourceModal;
+window.closeAddResourceModal = closeAddResourceModal;
 
 // ==================== DATA MANAGEMENT ====================
 
@@ -1654,7 +2092,7 @@ function setupManagementEventListeners() {
     document.getElementById('deleteResource').addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        deleteResource();
+        deleteResourceFromManagement();
     });
 
     // Main Skill Management
@@ -1663,7 +2101,7 @@ function setupManagementEventListeners() {
     document.getElementById('editMainSkill').addEventListener('click', startEditMainSkill);
     document.getElementById('saveMainSkillName').addEventListener('click', saveMainSkillName);
     document.getElementById('cancelEditMainSkill').addEventListener('click', cancelEditMainSkill);
-    document.getElementById('deleteMainSkill').addEventListener('click', deleteMainSkill);
+    document.getElementById('deleteMainSkill').addEventListener('click', deleteMainSkillFromManagement);
 
     // Sub-Skill Management
     document.getElementById('addSubSkill').addEventListener('click', addSubSkill);
@@ -1832,7 +2270,7 @@ async function updateResource() {
     }
 }
 
-async function deleteResource() {
+async function deleteResourceFromManagement() {
     const resourceId = document.getElementById('selectResource').value;
 
     if (!resourceId) {
@@ -2196,7 +2634,7 @@ async function cancelSubSkillEdit(mainSkillId) {
     displaySubSkills(mainSkill);
 }
 
-async function deleteMainSkill() {
+async function deleteMainSkillFromManagement() {
     const skillId = document.getElementById('selectMainSkill').value;
     if (!skillId) return;
 
@@ -2699,9 +3137,10 @@ async function openResourceModal(resourceId) {
 
     currentModalResourceId = resourceId;
 
-    // Set resource name and email
+    // Set resource name, email, and password
     document.getElementById('modalResourceName').textContent = resource.name;
-    document.getElementById('modalResourceEmail').textContent = resource.email;
+    document.getElementById('modalResourceEmail').value = resource.email || '';
+    document.getElementById('modalResourcePassword').value = resource.password || '';
 
     // Populate skills
     const container = document.getElementById('modalSkillsContainer');
@@ -2845,14 +3284,29 @@ async function saveNewPassword() {
 // ==================== CONFIRMATION MODAL ====================
 
 function showConfirmModal(message) {
+    console.log('showConfirmModal called with message:', message);
     return new Promise((resolve) => {
         const modal = document.getElementById('confirmModal');
         const messageEl = document.getElementById('confirmModalMessage');
         const yesBtn = document.getElementById('confirmModalYes');
         const noBtn = document.getElementById('confirmModalNo');
 
+        console.log('Modal elements found:', {
+            modal: !!modal,
+            messageEl: !!messageEl,
+            yesBtn: !!yesBtn,
+            noBtn: !!noBtn
+        });
+
+        if (!modal || !messageEl || !yesBtn || !noBtn) {
+            console.error('Missing modal elements!');
+            resolve(false);
+            return;
+        }
+
         messageEl.textContent = message;
         modal.classList.add('show');
+        console.log('Modal should now be visible, classList:', modal.classList.toString());
 
         // Handle Yes button click
         const handleYes = () => {
@@ -2923,6 +3377,17 @@ async function saveResourceSkills() {
             delete resource.subSkills[category][skillName];
         }
     });
+
+    // Get email and password from inputs
+    const email = document.getElementById('modalResourceEmail').value.trim();
+    const password = document.getElementById('modalResourcePassword').value.trim();
+
+    if (email) {
+        resource.email = email;
+    }
+    if (password) {
+        resource.password = password;
+    }
 
     // Recalculate main skills
     if (!resource.skills) {

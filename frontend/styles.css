@@ -854,6 +854,36 @@ h3 {
     background-color: #dc2626;
 }
 
+.delete-skill-btn,
+.delete-resource-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: var(--danger-color);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    opacity: 0.6;
+    z-index: 10;
+}
+
+.delete-skill-btn:hover,
+.delete-resource-btn:hover {
+    background-color: #dc2626;
+    opacity: 1;
+    transform: scale(1.1);
+}
+
 .edit-sub-skill-btn {
     padding: 0;
     width: 20px;
@@ -1432,6 +1462,10 @@ footer p {
 }
 
 /* Confirmation Modal */
+#confirmModal {
+    z-index: 30000 !important;
+}
+
 .confirm-modal-content {
     max-width: 500px;
     width: 90%;

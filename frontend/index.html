@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=40">
+    <link rel="stylesheet" href="styles.css?v=45">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -21,7 +21,7 @@
         <div class="container">
             <button class="nav-btn active" data-view="dashboard">Dashboard</button>
             <button class="nav-btn" data-view="heatmap">Skills Heatmap</button>
-            <button class="nav-btn" data-view="search">Search</button>
+            <button class="nav-btn" data-view="search">Resources</button>
             <button class="nav-btn" data-view="skills">Skills</button>
             <button class="nav-btn" data-view="management">Data Management</button>
         </div>
@@ -148,14 +148,17 @@
             </div>
         </section>
 
-        <!-- Search View -->
+        <!-- Resources View -->
         <section id="search-view" class="view">
-            <h2>Search</h2>
-            <div class="search-box">
-                <input type="text" id="resourceSearch" placeholder="Search team members...">
+            <h2>Resources Management</h2>
+            <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
+                <div class="search-box" style="flex: 1; margin: 0;">
+                    <input type="text" id="resourceSearch" placeholder="Search team members...">
+                </div>
+                <button class="btn-primary" onclick="openAddResourceModal()">Add New Resource</button>
             </div>
             <div id="searchResults" class="search-results">
-                <!-- Search results will appear here -->
+                <!-- Resource cards will appear here -->
             </div>
             <div id="resourceProfile" class="resource-profile">
                 <!-- Individual resource profile will appear here -->
@@ -165,8 +168,11 @@
         <!-- Skills View -->
         <section id="skills-view" class="view">
             <h2>Skills Management</h2>
-            <div class="search-box">
-                <input type="text" id="skillSearch" placeholder="Search skills...">
+            <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
+                <div class="search-box" style="flex: 1; margin: 0;">
+                    <input type="text" id="skillSearch" placeholder="Search skills...">
+                </div>
+                <button class="btn-primary" onclick="openAddSkillModal()">Add New Skill</button>
             </div>
             <div id="skillsResults" class="search-results">
                 <!-- Skill cards will appear here -->
@@ -326,7 +332,16 @@
                 <button class="modal-close" onclick="closeResourceModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <p id="modalResourceEmail" class="modal-email"></p>
+                <div class="form-group">
+                    <label for="modalResourceEmail">Email/Username:</label>
+                    <input type="text" id="modalResourceEmail" placeholder="Email or username">
+                </div>
+                <div class="form-group">
+                    <label for="modalResourcePassword">Password:</label>
+                    <input type="password" id="modalResourcePassword" placeholder="Password">
+                </div>
+                <hr>
+                <h4>Skills</h4>
                 <div id="modalSkillsContainer" class="modal-skills-container">
                     <!-- Skills will be populated here -->
                 </div>
@@ -354,21 +369,25 @@
         </div>
     </div>
 
-    <!-- Skill Sub-Skills Modal -->
+    <!-- Skill Edit Modal -->
     <div id="skillModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="modalSkillName">Skill Name</h3>
+                <h3>Edit Skill</h3>
                 <button class="modal-close" onclick="closeSkillModal()">&times;</button>
             </div>
             <div class="modal-body">
+                <div class="form-group">
+                    <label for="modalSkillNameInput">Skill Name:</label>
+                    <input type="text" id="modalSkillNameInput" placeholder="Skill name">
+                </div>
                 <div class="form-group">
                     <label>Skill Type:</label>
                     <span id="modalSkillType" style="font-weight: 600;"></span>
                 </div>
                 <div class="form-group">
-                    <label>Weight/Demand:</label>
-                    <span id="modalSkillWeight" style="font-weight: 600;"></span>
+                    <label for="modalSkillWeightInput">Weight/Demand (1-10):</label>
+                    <input type="number" id="modalSkillWeightInput" min="1" max="10" style="width: 80px;">
                 </div>
                 <hr>
                 <h4>Manage Sub-Skills</h4>
@@ -376,10 +395,78 @@
                     <label for="newSubSkillModal">New Sub-Skill Name:</label>
                     <input type="text" id="newSubSkillModal" placeholder="e.g., Python">
                 </div>
-                <button type="button" id="addSubSkillModal" class="btn-primary">Add Sub-Skill</button>
+                <button type="button" id="addSubSkillModal" class="btn-secondary">Add Sub-Skill</button>
                 <div id="subSkillsListModal" class="sub-skills-list" style="margin-top: 1rem;">
                     <!-- Sub-skills will be listed here -->
                 </div>
+                <div class="modal-actions modal-actions-bottom">
+                    <button class="btn-primary" onclick="saveSkillChanges()">Save & Close</button>
+                    <button class="btn-secondary" onclick="closeSkillModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add New Skill Modal -->
+    <div id="addSkillModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Skill</h3>
+                <button class="modal-close" onclick="closeAddSkillModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newSkillName">Skill Name:</label>
+                    <input type="text" id="newSkillName" placeholder="e.g., JavaScript">
+                </div>
+                <div class="form-group">
+                    <label for="newSkillType">Skill Type:</label>
+                    <select id="newSkillType">
+                        <option value="technical">Technical</option>
+                        <option value="non-technical">Non-Technical</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="newSkillWeight">Weight/Demand (1-10):</label>
+                    <input type="number" id="newSkillWeight" min="1" max="10" value="5">
+                </div>
+                <hr>
+                <h4>Add Sub-Skills (Optional)</h4>
+                <div class="form-group">
+                    <label for="newSkillSubSkillInput">Sub-Skill Name:</label>
+                    <input type="text" id="newSkillSubSkillInput" placeholder="e.g., Python">
+                </div>
+                <button type="button" id="addNewSkillSubSkillBtn" class="btn-secondary">Add Sub-Skill</button>
+                <div id="newSkillSubSkillsList" class="sub-skills-list" style="margin-top: 1rem;">
+                    <!-- Sub-skills will be listed here -->
+                </div>
+                <hr>
+                <button type="button" id="createSkillBtn" class="btn-primary">Create Skill</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add New Resource Modal -->
+    <div id="addResourceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Resource</h3>
+                <button class="modal-close" onclick="closeAddResourceModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newResourceName">Name:</label>
+                    <input type="text" id="newResourceName" placeholder="e.g., John Doe">
+                </div>
+                <div class="form-group">
+                    <label for="newResourceEmail">Email/Username:</label>
+                    <input type="text" id="newResourceEmail" placeholder="e.g., john.doe@company.com">
+                </div>
+                <div class="form-group">
+                    <label for="newResourcePassword">Password:</label>
+                    <input type="password" id="newResourcePassword" placeholder="Enter password">
+                </div>
+                <button type="button" id="createResourceBtn" class="btn-primary">Create Resource</button>
             </div>
         </div>
     </div>
@@ -391,6 +478,6 @@
         </div>
     </footer>
 
-    <script src="script.js?v=52"></script>
+    <script src="script.js?v=74"></script>
 </body>
 </html>
