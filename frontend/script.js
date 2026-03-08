@@ -807,6 +807,9 @@ async function renderView(viewName) {
         case 'skills':
             await renderSkills();
             break;
+        case 'radar':
+            await renderCustomRadar();
+            break;
         case 'management':
             await renderManagement();
             break;
@@ -832,12 +835,27 @@ async function navigateToSearch() {
     await renderView('search');
 }
 
-function scrollToCustomRadar() {
-    const customRadarSection = document.querySelector('.custom-chart-section');
-    if (customRadarSection) {
-        customRadarSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+let customRadarInitialized = false;
+
+async function renderCustomRadar() {
+    if (!customRadarInitialized) {
+        await populateSubSkillCheckboxes();
+        setupCustomChartEventListeners();
+        customRadarInitialized = true;
     }
 }
+
+async function navigateToRadar() {
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    const radarBtn = document.querySelector('[data-view="radar"]');
+    if (radarBtn) radarBtn.classList.add('active');
+    document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+    document.getElementById('radar-view').classList.add('active');
+    await renderView('radar');
+}
+
+// Keep old name as alias for any lingering references
+function scrollToCustomRadar() { navigateToRadar(); }
 
 // ==================== DASHBOARD ====================
 
@@ -2972,8 +2990,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupNavigation();
     await updateLastUpdated();
     await renderDashboard();
-    await populateSubSkillCheckboxes();
-    setupCustomChartEventListeners();
 });
 
 function updateChartTheme() {

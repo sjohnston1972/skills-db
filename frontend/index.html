@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=50">
+    <link rel="stylesheet" href="styles.css?v=51">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -44,6 +44,7 @@
             <button class="nav-btn" data-view="heatmap">Skills Heatmap</button>
             <button class="nav-btn" data-view="search">Resources</button>
             <button class="nav-btn" data-view="skills">Skills</button>
+            <button class="nav-btn" data-view="radar">Custom Radar</button>
             <button class="nav-btn" data-view="management">Settings</button>
         </div>
     </nav>
@@ -61,7 +62,7 @@
                     <div class="metric-label">Total Resources</div>
                     <small class="metric-hint">Click to view all</small>
                 </div>
-                <div class="metric-card clickable" id="skillsTrackedCard" onclick="scrollToCustomRadar()">
+                <div class="metric-card clickable" id="skillsTrackedCard" onclick="navigateToRadar()">
                     <div class="metric-value" id="totalSkills">0</div>
                     <div class="metric-label">Skills Tracked</div>
                     <small class="metric-hint">Click to explore</small>
@@ -133,10 +134,14 @@
                 </ul>
             </div>
 
-            <div class="custom-chart-section">
-                <h3>Custom Sub-Skills Radar Chart</h3>
-                <p class="section-description">Select specific sub-skills to compare. Hover over data points to see the top 10 resources for each skill.</p>
+        </section>
 
+        <!-- Custom Radar View -->
+        <section id="radar-view" class="view">
+            <h2>Custom Sub-Skills Radar Chart</h2>
+            <p class="section-description">Select specific sub-skills to compare across the team. Hover over data points to see the top 10 resources for each skill.</p>
+
+            <div class="custom-chart-section">
                 <div class="subskill-selector">
                     <div class="selector-header">
                         <h4>Select Sub-Skills:</h4>
@@ -434,6 +439,6 @@
     </footer>
 
     <div id="toastContainer"></div>
-    <script src="script.js?v=79"></script>
+    <script src="script.js?v=80"></script>
 </body>
 </html>
