@@ -3,8 +3,8 @@
 // ============================================================
 (function () {
     const html = document.documentElement;
-    const stored = localStorage.getItem('theme');
-    if (stored) html.setAttribute('data-theme', stored);
+    const stored = localStorage.getItem('theme') || 'dark';
+    html.setAttribute('data-theme', stored);
 
     function updateToggleLabel(theme) {
         const btn = document.getElementById('themeToggle');
@@ -862,6 +862,23 @@ async function renderDashboard() {
     document.getElementById('totalResources').textContent = totalResources;
     document.getElementById('totalSkills').textContent = totalSkills;
 
+    // Compute average team skill level (across all sub-skill ratings)
+    let allRatings = [];
+    data.resources.forEach(resource => {
+        if (resource.subSkills) {
+            Object.values(resource.subSkills).forEach(category => {
+                Object.values(category).forEach(level => {
+                    if (level > 0) allRatings.push(level);
+                });
+            });
+        }
+    });
+    const avgTeamSkillEl = document.getElementById('avgTeamSkill');
+    if (avgTeamSkillEl) {
+        const avg = allRatings.length > 0 ? allRatings.reduce((a, b) => a + b, 0) / allRatings.length : 0;
+        avgTeamSkillEl.textContent = avg > 0 ? avg.toFixed(1) : '—';
+    }
+
     // Calculate average skill levels for each skill, separated by type
     const technicalSkillAverages = {};
     const nonTechnicalSkillAverages = {};
@@ -894,6 +911,19 @@ async function renderDashboard() {
 
     // Render top/bottom skills
     renderTopSkills(allSkillAverages);
+
+    // Top priority gap: skill with lowest non-zero average
+    const topGapSkillEl = document.getElementById('topGapSkill');
+    if (topGapSkillEl) {
+        const entries = Object.entries(allSkillAverages).filter(([, v]) => v > 0);
+        if (entries.length > 0) {
+            entries.sort(([, a], [, b]) => a - b);
+            const [gapName, gapVal] = entries[0];
+            topGapSkillEl.textContent = `${gapName} (${gapVal.toFixed(1)})`;
+        } else {
+            topGapSkillEl.textContent = '—';
+        }
+    }
 
     // Render weighted gap analysis
     renderWeightedGaps(data);
@@ -1799,12 +1829,12 @@ async function saveSkillChanges() {
     const newWeight = parseInt(document.getElementById('modalSkillWeightInput').value);
 
     if (!newName) {
-        alert('Please enter a skill name');
+        showToast('Please enter a skill name', 'error');
         return;
     }
 
     if (isNaN(newWeight) || newWeight < 1 || newWeight > 10) {
-        alert('Please enter a weight between 1 and 10');
+        showToast('Please enter a weight between 1 and 10', 'error');
         return;
     }
 
@@ -1821,10 +1851,10 @@ async function saveSkillChanges() {
         clearDataCache();
         await renderSkills();
         closeSkillModal();
-        console.log('Skill changes saved successfully');
+        showToast('Skill updated successfully', 'success');
     } catch (error) {
         console.error('Failed to save skill changes:', error);
-        alert(`Error saving skill changes: ${error.message}`);
+        showToast(`Error saving skill changes: ${error.message}`, 'error');
     }
 }
 
@@ -1848,52 +1878,34 @@ function closeSkillModal() {
 window.closeSkillModal = closeSkillModal;
 
 async function deleteMainSkill(skillId, skillName) {
-    console.log('!!! DELETE BUTTON CLICKED !!!', 'skillId:', skillId, 'skillName:', skillName);
-    console.log('showConfirmModal function exists:', typeof showConfirmModal);
-
     try {
-        // Use custom confirm modal
-        console.log('About to call showConfirmModal...');
-        const confirmed = await showConfirmModal(`Are you sure you want to delete "${skillName}"?\n\nThis will remove it from all resources and delete all its sub-skills.`);
-        console.log('Confirmation result:', confirmed);
+        const confirmed = await showConfirmModal(`Are you sure you want to delete "${skillName}"? This will remove it from all resources and delete all its sub-skills.`, { title: 'Delete Skill', confirmLabel: 'Delete' });
 
-        if (!confirmed) {
-            console.log('User cancelled deletion');
-            return;
-        }
+        if (!confirmed) return;
 
-        console.log('Calling API.deleteSkill...');
         await API.deleteSkill(skillId);
         clearDataCache();
         await renderSkills();
-        console.log('Skill deleted successfully');
+        showToast(`"${skillName}" deleted`, 'success');
     } catch (error) {
         console.error('Error in deleteMainSkill:', error);
-        alert(`Error: ${error.message}`);
+        showToast(`Error: ${error.message}`, 'error');
     }
 }
 
 async function deleteResource(resourceId, resourceName) {
-    console.log('!!! DELETE RESOURCE CLICKED !!!', 'resourceId:', resourceId, 'resourceName:', resourceName);
-    console.log('About to show confirm modal for resource deletion');
-
     try {
-        const confirmed = await showConfirmModal(`Are you sure you want to delete "${resourceName}"?\n\nThis will permanently remove this resource and all their skill data.`);
-        console.log('Resource deletion confirmation result:', confirmed);
+        const confirmed = await showConfirmModal(`Are you sure you want to delete "${resourceName}"? This will permanently remove this resource and all their skill data.`, { title: 'Delete Resource', confirmLabel: 'Delete' });
 
-        if (!confirmed) {
-            console.log('User cancelled deletion');
-            return;
-        }
+        if (!confirmed) return;
 
-        console.log('Calling API.deleteResource...');
         await API.deleteResource(resourceId);
         clearDataCache();
         await renderSearch();
-        console.log('Resource deleted successfully');
+        showToast(`"${resourceName}" removed`, 'success');
     } catch (error) {
         console.error('Error in deleteResource:', error);
-        alert(`Error: ${error.message}`);
+        showToast(`Error: ${error.message}`, 'error');
     }
 }
 
@@ -1967,12 +1979,12 @@ function openAddSkillModal() {
         const weight = parseInt(document.getElementById('newSkillWeight').value);
 
         if (!name) {
-            alert('Please enter a skill name');
+            showToast('Please enter a skill name', 'error');
             return;
         }
 
         if (isNaN(weight) || weight < 1 || weight > 10) {
-            alert('Please enter a weight between 1 and 10');
+            showToast('Please enter a weight between 1 and 10', 'error');
             return;
         }
 
@@ -1985,16 +1997,15 @@ function openAddSkillModal() {
                 weight: weight,
                 subSkills: newSkillSubSkills
             };
-            console.log('Creating skill with data:', skillData);
             await API.createSkill(skillData);
             clearDataCache();
             await renderSkills();
             closeAddSkillModal();
             newSkillSubSkills = []; // Clear the array
-            console.log('Skill created successfully');
+            showToast(`Skill "${name}" created`, 'success');
         } catch (error) {
             console.error('Failed to create skill:', error);
-            alert(`Error creating skill: ${error.message}`);
+            showToast(`Error creating skill: ${error.message}`, 'error');
         }
     };
 }
@@ -2023,17 +2034,17 @@ function openAddResourceModal() {
         const password = document.getElementById('newResourcePassword').value.trim();
 
         if (!name) {
-            alert('Please enter a name');
+            showToast('Please enter a name', 'error');
             return;
         }
 
         if (!email) {
-            alert('Please enter an email/username');
+            showToast('Please enter an email/username', 'error');
             return;
         }
 
         if (!password) {
-            alert('Please enter a password');
+            showToast('Please enter a password', 'error');
             return;
         }
 
@@ -2044,16 +2055,14 @@ function openAddResourceModal() {
                 email: email,
                 password: password
             };
-            console.log('Creating resource with data:', resourceData);
-            const result = await API.createResource(resourceData);
-            console.log('Create resource result:', result);
+            await API.createResource(resourceData);
             clearDataCache();
             await renderSearch();
             closeAddResourceModal();
-            console.log('Resource created successfully');
+            showToast(`Resource "${name}" added`, 'success');
         } catch (error) {
             console.error('Failed to create resource:', error);
-            alert(`Error creating resource: ${error.message}`);
+            showToast(`Error creating resource: ${error.message}`, 'error');
         }
     };
 }
@@ -2083,618 +2092,101 @@ window.closeAddResourceModal = closeAddResourceModal;
 
 // ==================== DATA MANAGEMENT ====================
 
+let managementListenersInit = false;
+
 function renderManagement() {
-    populateResourceSelect();
-    populateMainSkillSelect();
-    setupManagementEventListeners();
-}
-
-async function populateResourceSelect() {
-    const data = await getData();
-    const select = document.getElementById('selectResource');
-
-    select.innerHTML = '<option value="">-- Choose Resource --</option>';
-    data.resources.forEach(eng => {
-        select.innerHTML += `<option value="${eng.id}">${eng.name}</option>`;
-    });
-}
-
-async function populateMainSkillSelect() {
-    const data = await getData();
-    const select = document.getElementById('selectMainSkill');
-
-    select.innerHTML = '<option value="">-- Choose Main Skill --</option>';
-    data.skills.forEach(skill => {
-        select.innerHTML += `<option value="${skill.id}">${skill.name}</option>`;
-    });
-}
-
-function setupManagementEventListeners() {
-    // Add Resource
-    document.getElementById('addResource').addEventListener('click', addResource);
-
-    // Select Resource
-    document.getElementById('selectResource').addEventListener('change', onResourceSelect);
-
-    // Update/Delete Resource
-    document.getElementById('updateResource').addEventListener('click', updateResource);
-    document.getElementById('changePassword').addEventListener('click', openChangePasswordModal);
-    document.getElementById('deleteResource').addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        deleteResourceFromManagement();
-    });
-
-    // Main Skill Management
-    document.getElementById('addMainSkill').addEventListener('click', addMainSkill);
-    document.getElementById('selectMainSkill').addEventListener('change', onMainSkillSelect);
-    document.getElementById('editMainSkill').addEventListener('click', startEditMainSkill);
-    document.getElementById('saveMainSkillName').addEventListener('click', saveMainSkillName);
-    document.getElementById('cancelEditMainSkill').addEventListener('click', cancelEditMainSkill);
-    document.getElementById('deleteMainSkill').addEventListener('click', deleteMainSkillFromManagement);
-
-    // Sub-Skill Management
-    document.getElementById('addSubSkill').addEventListener('click', addSubSkill);
-
-    // Data actions
-    document.getElementById('exportData').addEventListener('click', exportData);
-    document.getElementById('importData').addEventListener('click', () => {
-        document.getElementById('importFile').click();
-    });
-    document.getElementById('importFile').addEventListener('change', importData);
-    document.getElementById('resetData').addEventListener('click', resetData);
-}
-
-async function addResource() {
-    const name = document.getElementById('resourceName').value.trim();
-    const email = document.getElementById('resourceEmail').value.trim();
-    const password = document.getElementById('resourcePassword').value;
-
-    if (!name || !email) {
-        alert('Please enter both name and email.');
-        return;
-    }
-
-    try {
-        // Create resource via API
-        await API.createResource({
-            id: `eng-${Date.now()}`,
-            name: name,
-            email: email,
-            password: password || undefined // Include password if provided
+    loadAdminUsers();
+    if (!managementListenersInit) {
+        managementListenersInit = true;
+        document.getElementById('addAdminUser').addEventListener('click', addAdminUser);
+        document.getElementById('exportData').addEventListener('click', exportData);
+        document.getElementById('importData').addEventListener('click', () => {
+            document.getElementById('importFile').click();
         });
-
-        // Clear form
-        document.getElementById('resourceName').value = '';
-        document.getElementById('resourceEmail').value = '';
-        document.getElementById('resourcePassword').value = '';
-
-        // Clear cache and refresh UI
-        clearDataCache();
-        console.log(`Resource "${name}" added successfully!`);
-        await populateResourceSelect();
-        await renderDashboard();
-    } catch (error) {
-        console.error('Failed to add resource:', error);
-        alert(`Error adding resource: ${error.message}`);
+        document.getElementById('importFile').addEventListener('change', importData);
+        document.getElementById('resetData').addEventListener('click', resetData);
     }
 }
 
-async function onResourceSelect() {
-    const resourceId = document.getElementById('selectResource').value;
+async function loadAdminUsers() {
+    const container = document.getElementById('adminUsersList');
+    container.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.85rem;">Loading...</p>';
+    try {
+        const response = await fetch('/api/admin/users');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const users = await response.json();
 
-    if (!resourceId) {
-        document.getElementById('updateResource').disabled = true;
-        document.getElementById('changePassword').disabled = true;
-        document.getElementById('deleteResource').disabled = true;
-        document.getElementById('resourceSkillsEdit').innerHTML = '';
-        return;
-    }
-
-    document.getElementById('updateResource').disabled = false;
-    document.getElementById('changePassword').disabled = false;
-    document.getElementById('deleteResource').disabled = false;
-
-    const data = await getData();
-    const resource = data.resources.find(e => e.id === resourceId);
-
-    // Display skills editor with accordion for sub-skills
-    const container = document.getElementById('resourceSkillsEdit');
-    let html = '<h4>Edit Sub-Skills (Main skills auto-calculate):</h4>';
-    html += '<div class="skills-accordion">';
-
-    data.skills.forEach((mainSkill, index) => {
-        const isOpen = index === 0; // First one open by default
-        const mainSkillLevel = resource.skills[mainSkill.name] || 0;
-
-        html += `
-            <div class="accordion-item">
-                <button class="accordion-header ${isOpen ? 'active' : ''}" onclick="toggleAccordion(this)">
-                    <span>${mainSkill.name}</span>
-                    <span class="main-skill-badge">Current: ${mainSkillLevel}</span>
-                    <span class="accordion-icon">${isOpen ? '▼' : '▶'}</span>
-                </button>
-                <div class="accordion-content" style="display: ${isOpen ? 'block' : 'none'}">
-        `;
-
-        // Get resource's sub-skills for this category
-        const engineerSubSkills = resource.subSkills?.[mainSkill.name] || {};
-
-        // Display all available sub-skills for this category
-        if (mainSkill.subSkills && mainSkill.subSkills.length > 0) {
-            mainSkill.subSkills.forEach(subSkill => {
-                const level = engineerSubSkills[subSkill] || 0;
-                html += `
-                    <div class="sub-skill-edit-item">
-                        <label title="${subSkill}">${subSkill}</label>
-                        <input type="number" min="0" max="5" value="${level}"
-                               data-main-skill="${mainSkill.name}"
-                               data-sub-skill="${subSkill}"
-                               class="sub-skill-input">
-                    </div>
-                `;
-            });
-        } else {
-            html += '<p class="no-subskills">No sub-skills available for this category</p>';
+        if (users.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-secondary); padding: 0.5rem 0; font-size: 0.9rem;">No administrators configured.</p>';
+            return;
         }
 
-        html += `
-                </div>
+        container.innerHTML = users.map(u => `
+            <div class="admin-user-row">
+                <span class="admin-username">${u.username}</span>
+                <button class="btn-danger btn-sm" onclick="removeAdminUser('${u.username.replace(/'/g, "\\'")}')">Remove</button>
             </div>
-        `;
-    });
-
-    html += '</div>';
-    container.innerHTML = html;
+        `).join('');
+    } catch (error) {
+        container.innerHTML = `<p style="color: var(--danger); font-size: 0.9rem;">Error loading users: ${error.message}</p>`;
+    }
 }
 
-// Helper function to toggle accordion
-function toggleAccordion(button) {
-    const content = button.nextElementSibling;
-    const icon = button.querySelector('.accordion-icon');
-    const isOpen = content.style.display === 'block';
+async function addAdminUser() {
+    const username = document.getElementById('adminUsername').value.trim();
+    const password = document.getElementById('adminPassword').value;
 
-    content.style.display = isOpen ? 'none' : 'block';
-    icon.textContent = isOpen ? '▶' : '▼';
-    button.classList.toggle('active');
-}
-
-async function updateResource() {
-    const resourceId = document.getElementById('selectResource').value;
-    if (!resourceId) return;
+    if (!username || !password) {
+        showToast('Please enter both username and password.', 'error');
+        return;
+    }
+    if (password.length < 6) {
+        showToast('Password must be at least 6 characters.', 'error');
+        return;
+    }
 
     try {
-        // Collect sub-skills from inputs
-        const inputs = document.querySelectorAll('.sub-skill-input');
-        const subSkillsByCategory = {};
-
-        inputs.forEach(input => {
-            const mainSkill = input.getAttribute('data-main-skill');
-            const subSkill = input.getAttribute('data-sub-skill');
-            const level = parseInt(input.value);
-
-            if (!subSkillsByCategory[mainSkill]) {
-                subSkillsByCategory[mainSkill] = {};
-            }
-
-            if (level > 0) {
-                subSkillsByCategory[mainSkill][subSkill] = level;
-            }
+        const response = await fetch('/api/admin/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
         });
 
-        // Update resource via API
-        await API.updateResource(resourceId, {
-            subSkills: subSkillsByCategory
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to add user');
+        }
+
+        document.getElementById('adminUsername').value = '';
+        document.getElementById('adminPassword').value = '';
+        await loadAdminUsers();
+        showToast(`User "${username}" added`, 'success');
+    } catch (error) {
+        showToast(`Error: ${error.message}`, 'error');
+    }
+}
+
+async function removeAdminUser(username) {
+    const confirmed = await showConfirmModal(`Remove administrator "${username}"?`, { title: 'Remove User', confirmLabel: 'Remove' });
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
+            method: 'DELETE'
         });
 
-        // Clear cache and refresh UI
-        clearDataCache();
-        console.log(`Resource updated successfully! Main skills recalculated from sub-skills.`);
-        await renderDashboard();
-
-        // Refresh the editor to show updated values
-        onResourceSelect();
-    } catch (error) {
-        console.error('Failed to update resource:', error);
-        alert(`Error updating resource: ${error.message}`);
-    }
-}
-
-async function deleteResourceFromManagement() {
-    const resourceId = document.getElementById('selectResource').value;
-
-    if (!resourceId) {
-        alert('Please select a resource to delete.');
-        return;
-    }
-
-    try {
-        // Get resource details first
-        const data = await getData();
-        const resource = data.resources.find(e => e.id === resourceId);
-
-        if (!resource) {
-            alert('Resource not found.');
-            return;
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to remove user');
         }
 
-        const confirmed = await showConfirmModal(`Are you sure you want to delete "${resource.name}"?`);
-        if (!confirmed) {
-            return;
-        }
-
-        // Delete via API
-        await API.deleteResource(resourceId);
-
-        // Clear cache and refresh UI
-        clearDataCache();
-        console.log(`Resource "${resource.name}" deleted successfully!`);
-        document.getElementById('selectResource').value = '';
-        document.getElementById('resourceSkillsEdit').innerHTML = '';
-        document.getElementById('updateResource').disabled = true;
-        document.getElementById('changePassword').disabled = true;
-        document.getElementById('deleteResource').disabled = true;
-        await populateResourceSelect();
-        await renderDashboard();
+        await loadAdminUsers();
+        showToast(`User "${username}" removed`, 'success');
     } catch (error) {
-        console.error('Failed to delete resource:', error);
-        alert(`Error deleting resource: ${error.message}`);
+        showToast(`Error: ${error.message}`, 'error');
     }
 }
 
-async function addMainSkill() {
-    const name = document.getElementById('newMainSkill').value.trim();
-    const weight = parseInt(document.getElementById('newMainSkillWeight').value) || 5;
-    const skillType = document.getElementById('newMainSkillType').value || 'technical';
-
-    if (!name) {
-        alert('Please enter a main skill category name.');
-        return;
-    }
-
-    if (weight < 1 || weight > 10) {
-        alert('Weight must be between 1 and 10.');
-        return;
-    }
-
-    try {
-        // Create skill via API
-        await API.createSkill({
-            id: `skill-${Date.now()}`,
-            name: name,
-            category: 'Main Skill Category',
-            weight: weight,
-            skillType: skillType
-        });
-
-        // Clear form
-        document.getElementById('newMainSkill').value = '';
-        document.getElementById('newMainSkillWeight').value = '5';
-        document.getElementById('newMainSkillType').value = 'technical';
-
-        // Clear cache and refresh UI
-        clearDataCache();
-        console.log(`Main skill category "${name}" added successfully!`);
-        await populateMainSkillSelect();
-        await renderDashboard();
-    } catch (error) {
-        console.error('Failed to add main skill:', error);
-        alert(`Error adding skill: ${error.message}`);
-    }
-}
-
-async function onMainSkillSelect() {
-    const skillId = document.getElementById('selectMainSkill').value;
-
-    if (!skillId) {
-        document.getElementById('deleteMainSkill').disabled = true;
-        document.getElementById('editMainSkill').disabled = true;
-        document.getElementById('subSkillsManagement').style.display = 'none';
-        document.getElementById('editMainSkillSection').style.display = 'none';
-        return;
-    }
-
-    document.getElementById('deleteMainSkill').disabled = false;
-    document.getElementById('editMainSkill').disabled = false;
-    document.getElementById('subSkillsManagement').style.display = 'block';
-
-    const data = await getData();
-    const mainSkill = data.skills.find(s => s.id === skillId);
-
-    // Display sub-skills list
-    displaySubSkills(mainSkill);
-}
-
-async function startEditMainSkill() {
-    const skillId = document.getElementById('selectMainSkill').value;
-    if (!skillId) return;
-
-    const data = await getData();
-    const mainSkill = data.skills.find(s => s.id === skillId);
-
-    if (!mainSkill) return;
-
-    // Show edit section with current values
-    document.getElementById('editMainSkillName').value = mainSkill.name;
-    document.getElementById('editMainSkillWeight').value = mainSkill.weight || 5;
-    document.getElementById('editMainSkillType').value = mainSkill.skillType || 'technical';
-
-    document.getElementById('editMainSkillSection').style.display = 'block';
-    document.getElementById('editMainSkillWeightSection').style.display = 'block';
-    document.getElementById('editMainSkillTypeSection').style.display = 'block';
-    document.getElementById('editMainSkill').style.display = 'none';
-    document.getElementById('saveMainSkillName').style.display = 'inline-block';
-    document.getElementById('cancelEditMainSkill').style.display = 'inline-block';
-    document.getElementById('deleteMainSkill').disabled = true;
-    document.getElementById('selectMainSkill').disabled = true;
-}
-
-function cancelEditMainSkill() {
-    document.getElementById('editMainSkillSection').style.display = 'none';
-    document.getElementById('editMainSkillWeightSection').style.display = 'none';
-    document.getElementById('editMainSkillTypeSection').style.display = 'none';
-    document.getElementById('editMainSkill').style.display = 'inline-block';
-    document.getElementById('saveMainSkillName').style.display = 'none';
-    document.getElementById('cancelEditMainSkill').style.display = 'none';
-    document.getElementById('deleteMainSkill').disabled = false;
-    document.getElementById('selectMainSkill').disabled = false;
-}
-
-async function saveMainSkillName() {
-    const skillId = document.getElementById('selectMainSkill').value;
-    const newName = document.getElementById('editMainSkillName').value.trim();
-    const newWeight = parseInt(document.getElementById('editMainSkillWeight').value) || 5;
-    const newSkillType = document.getElementById('editMainSkillType').value || 'technical';
-
-    if (!skillId || !newName) {
-        alert('Please enter a valid category name.');
-        return;
-    }
-
-    if (newWeight < 1 || newWeight > 10) {
-        alert('Weight must be between 1 and 10.');
-        return;
-    }
-
-    try {
-        // Update skill via API
-        await API.updateSkill(skillId, {
-            name: newName,
-            weight: newWeight,
-            skillType: newSkillType,
-            category: 'Main Skill Category'
-        });
-
-        // Clear cache and refresh UI
-        clearDataCache();
-        console.log(`Skill category updated successfully!`);
-
-        // Refresh the select dropdown
-        await populateMainSkillSelect();
-        document.getElementById('selectMainSkill').value = skillId;
-
-        // Cancel edit mode
-        cancelEditMainSkill();
-
-        // Refresh dashboard
-        await renderDashboard();
-    } catch (error) {
-        console.error('Failed to update skill:', error);
-        alert(`Error updating skill: ${error.message}`);
-    }
-}
-
-function displaySubSkills(mainSkill) {
-    const container = document.getElementById('subSkillsList');
-
-    if (!mainSkill.subSkills || mainSkill.subSkills.length === 0) {
-        container.innerHTML = '<p class="no-subskills">No sub-skills yet. Add one above.</p>';
-        return;
-    }
-
-    let html = '<h5>Current Sub-Skills:</h5>';
-    html += '<div class="sub-skills-grid">';
-
-    mainSkill.subSkills.forEach(subSkill => {
-        const subSkillName = typeof subSkill === 'string' ? subSkill : subSkill.name;
-        html += `
-            <div class="sub-skill-tag" data-subskill="${subSkillName.replace(/"/g, '&quot;')}">
-                <span class="sub-skill-name">${subSkillName}</span>
-                <button class="edit-sub-skill-btn" onclick="startEditSubSkill('${mainSkill.id}', '${subSkillName.replace(/'/g, "\\'")}')">✎</button>
-                <button class="delete-sub-skill-btn" onclick="deleteSubSkill('${mainSkill.id}', '${subSkillName.replace(/'/g, "\\'")}')">×</button>
-            </div>
-        `;
-    });
-
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-async function addSubSkill() {
-    const skillId = document.getElementById('selectMainSkill').value;
-    if (!skillId) {
-        alert('Please select a main skill category first.');
-        return;
-    }
-
-    const subSkillName = document.getElementById('newSubSkill').value.trim();
-    if (!subSkillName) {
-        alert('Please enter a sub-skill name.');
-        return;
-    }
-
-    try {
-        // Create sub-skill via API
-        await API.createSubSkill(skillId, {
-            id: `subskill-${Date.now()}`,
-            name: subSkillName
-        });
-
-        // Clear form
-        document.getElementById('newSubSkill').value = '';
-
-        // Clear cache and refresh UI
-        clearDataCache();
-        console.log(`Sub-skill "${subSkillName}" added successfully!`);
-
-        // Refresh sub-skills display
-        const data = await getData();
-        const mainSkill = data.skills.find(s => s.id === skillId);
-        displaySubSkills(mainSkill);
-    } catch (error) {
-        console.error('Failed to add sub-skill:', error);
-        alert(`Error adding sub-skill: ${error.message}`);
-    }
-}
-
-async function deleteSubSkill(mainSkillId, subSkillName) {
-    const confirmed = await showConfirmModal(`Are you sure you want to delete the sub-skill "${subSkillName}"? This will remove it from all resources.`);
-    if (!confirmed) {
-        return;
-    }
-
-    try {
-        // Get data to find the subSkillId
-        const data = await getData();
-        const mainSkill = data.skills.find(s => s.id === mainSkillId);
-        const subSkill = mainSkill.subSkills.find(ss => (typeof ss === 'string' ? ss : ss.name) === subSkillName);
-        const subSkillId = typeof subSkill === 'object' ? subSkill.id : `subskill-${subSkillName}`;
-
-        // Delete via API
-        await API.deleteSubSkill(mainSkillId, subSkillId);
-
-        // Clear cache and refresh UI
-        clearDataCache();
-        console.log(`Sub-skill "${subSkillName}" deleted successfully!`);
-
-        // Refresh display
-        const updatedData = await getData();
-        const updatedMainSkill = updatedData.skills.find(s => s.id === mainSkillId);
-        displaySubSkills(updatedMainSkill);
-        await renderDashboard();
-    } catch (error) {
-        console.error('Failed to delete sub-skill:', error);
-        alert(`Error deleting sub-skill: ${error.message}`);
-    }
-}
-
-function startEditSubSkill(mainSkillId, subSkillName) {
-    // Find the tag element
-    const container = document.getElementById('subSkillsList');
-    const tags = container.querySelectorAll('.sub-skill-tag');
-
-    tags.forEach(tag => {
-        const tagSubSkill = tag.getAttribute('data-subskill');
-        if (tagSubSkill === subSkillName) {
-            const nameSpan = tag.querySelector('.sub-skill-name');
-            const editBtn = tag.querySelector('.edit-sub-skill-btn');
-            const deleteBtn = tag.querySelector('.delete-sub-skill-btn');
-
-            // Replace span with input
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = subSkillName;
-            input.className = 'sub-skill-edit-input';
-            nameSpan.replaceWith(input);
-            input.focus();
-            input.select();
-
-            // Replace edit button with save button
-            editBtn.textContent = '✓';
-            editBtn.className = 'save-sub-skill-btn';
-            editBtn.onclick = () => saveSubSkillEdit(mainSkillId, subSkillName, input.value);
-
-            // Replace delete button with cancel button
-            deleteBtn.textContent = '✕';
-            deleteBtn.className = 'cancel-sub-skill-btn';
-            deleteBtn.onclick = () => cancelSubSkillEdit(mainSkillId);
-        }
-    });
-}
-
-async function saveSubSkillEdit(mainSkillId, oldName, newName) {
-    newName = newName.trim();
-
-    if (!newName) {
-        alert('Sub-skill name cannot be empty.');
-        return;
-    }
-
-    if (newName === oldName) {
-        cancelSubSkillEdit(mainSkillId);
-        return;
-    }
-
-    const data = await getData();
-    const mainSkill = data.skills.find(s => s.id === mainSkillId);
-
-    // Check if new name already exists
-    if (mainSkill.subSkills.includes(newName)) {
-        alert(`Sub-skill "${newName}" already exists in this category.`);
-        return;
-    }
-
-    // Update in main skill's sub-skills list
-    const index = mainSkill.subSkills.indexOf(oldName);
-    if (index !== -1) {
-        mainSkill.subSkills[index] = newName;
-    }
-
-    // Update in all resources' sub-skills
-    data.resources.forEach(resource => {
-        if (resource.subSkills && resource.subSkills[mainSkill.name]) {
-            const categorySkills = resource.subSkills[mainSkill.name];
-            if (categorySkills[oldName] !== undefined) {
-                categorySkills[newName] = categorySkills[oldName];
-                delete categorySkills[oldName];
-            }
-        }
-    });
-
-    saveData(data);
-    console.log(`Sub-skill renamed from "${oldName}" to "${newName}"!`);
-
-    displaySubSkills(mainSkill);
-    renderDashboard();
-}
-
-async function cancelSubSkillEdit(mainSkillId) {
-    const data = await getData();
-    const mainSkill = data.skills.find(s => s.id === mainSkillId);
-    displaySubSkills(mainSkill);
-}
-
-async function deleteMainSkillFromManagement() {
-    const skillId = document.getElementById('selectMainSkill').value;
-    if (!skillId) return;
-
-    try {
-        const data = await getData();
-        const mainSkill = data.skills.find(s => s.id === skillId);
-
-        const confirmed = await showConfirmModal(`Are you sure you want to delete "${mainSkill.name}" and all its sub-skills? This will remove it from all resources.`);
-        if (!confirmed) {
-            return;
-        }
-
-        // Delete via API
-        await API.deleteSkill(skillId);
-
-        // Clear cache and refresh UI
-        clearDataCache();
-        console.log(`Main skill category "${mainSkill.name}" deleted successfully!`);
-
-        document.getElementById('selectMainSkill').value = '';
-        document.getElementById('deleteMainSkill').disabled = true;
-        document.getElementById('editMainSkill').disabled = true;
-        document.getElementById('subSkillsManagement').style.display = 'none';
-        await populateMainSkillSelect();
-        await renderDashboard();
-    } catch (error) {
-        console.error('Failed to delete main skill:', error);
-        alert(`Error deleting main skill: ${error.message}`);
-    }
-}
 
 async function exportData() {
     const data = await getData();
@@ -2722,7 +2214,7 @@ function importData(event) {
                 throw new Error('Invalid data format');
             }
 
-            const confirmed = await showConfirmModal('This will replace all current data. Continue?');
+            const confirmed = await showConfirmModal('This will replace all current data. Continue?', { title: 'Import Data', confirmLabel: 'Import' });
             if (confirmed) {
                 saveData(importedData);
                 console.log('Data imported successfully!');
@@ -2736,7 +2228,7 @@ function importData(event) {
 }
 
 async function resetData() {
-    const confirmed = await showConfirmModal('This will reset all data to sample data. Continue?');
+    const confirmed = await showConfirmModal('This will reset all data to sample data. Continue?', { title: 'Reset Data', confirmLabel: 'Reset' });
     if (!confirmed) {
         return;
     }
@@ -3313,30 +2805,23 @@ async function saveNewPassword() {
 
 // ==================== CONFIRMATION MODAL ====================
 
-function showConfirmModal(message) {
-    console.log('showConfirmModal called with message:', message);
+function showConfirmModal(message, { title = 'Confirm Action', confirmLabel = 'Yes' } = {}) {
     return new Promise((resolve) => {
         const modal = document.getElementById('confirmModal');
         const messageEl = document.getElementById('confirmModalMessage');
+        const titleEl = document.getElementById('confirmModalTitle');
         const yesBtn = document.getElementById('confirmModalYes');
         const noBtn = document.getElementById('confirmModalNo');
 
-        console.log('Modal elements found:', {
-            modal: !!modal,
-            messageEl: !!messageEl,
-            yesBtn: !!yesBtn,
-            noBtn: !!noBtn
-        });
-
         if (!modal || !messageEl || !yesBtn || !noBtn) {
-            console.error('Missing modal elements!');
             resolve(false);
             return;
         }
 
         messageEl.textContent = message;
+        if (titleEl) titleEl.textContent = title;
+        yesBtn.textContent = confirmLabel;
         modal.classList.add('show');
-        console.log('Modal should now be visible, classList:', modal.classList.toString());
 
         // Handle Yes button click
         const handleYes = () => {
@@ -3449,9 +2934,10 @@ async function saveResourceSkills() {
         // Clear cache and refresh the search results
         clearDataCache();
         await renderSearch();
+        showToast('Skills saved successfully', 'success');
     } catch (error) {
         console.error('Error saving skills:', error);
-        alert('Failed to save skills. Please try again.');
+        showToast('Failed to save skills. Please try again.', 'error');
     }
 }
 
@@ -3462,6 +2948,32 @@ document.addEventListener('click', (e) => {
         closeResourceModal();
     }
 });
+
+// ==================== TOAST NOTIFICATIONS ====================
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+
+    const icons = { success: '✓', error: '✕', info: 'ℹ' };
+    toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span class="toast-msg">${message}</span>`;
+
+    container.appendChild(toast);
+
+    // Trigger slide-in
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => toast.classList.add('show'));
+    });
+
+    // Auto-remove after 3.5s
+    setTimeout(() => {
+        toast.classList.remove('show');
+        toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    }, 3500);
+}
 
 // ==================== INITIALIZATION ====================
 

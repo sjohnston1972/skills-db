@@ -127,8 +127,10 @@ router.get('/:id/sub-skills', async (req, res) => {
 
 // POST /api/skills - Create new main skill
 router.post('/', async (req, res) => {
+    const client = await db.getClient();
+
     try {
-        const { id, name, category, weight, skillType } = req.body;
+        const { id, name, category, weight, skillType, subSkills } = req.body;
 
         if (!id || !name) {
             return res.status(400).json({
@@ -153,13 +155,16 @@ router.post('/', async (req, res) => {
             });
         }
 
+        await client.query('BEGIN');
+
         // Check if ID or name already exists
-        const existingResult = await db.query(
+        const existingResult = await client.query(
             'SELECT id FROM main_skills WHERE id = $1 OR name = $2',
             [id, name]
         );
 
         if (existingResult.rows.length > 0) {
+            await client.query('ROLLBACK');
             return res.status(409).json({
                 success: false,
                 error: 'Main skill with this ID or name already exists'
@@ -167,16 +172,30 @@ router.post('/', async (req, res) => {
         }
 
         // Insert new main skill
-        const result = await db.query(
+        const result = await client.query(
             'INSERT INTO main_skills (id, name, category, weight, skill_type) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, category, weight, skill_type, created_at',
             [id, name, category || null, weight || 5, skillType || 'technical']
         );
 
+        // Insert sub-skills if provided
+        if (subSkills && Array.isArray(subSkills) && subSkills.length > 0) {
+            for (const subSkillName of subSkills) {
+                if (subSkillName && typeof subSkillName === 'string') {
+                    await client.query(
+                        'INSERT INTO sub_skills (main_skill_id, name) VALUES ($1, $2)',
+                        [id, subSkillName.trim()]
+                    );
+                }
+            }
+        }
+
         // Update metadata
-        await db.query(
+        await client.query(
             "UPDATE metadata SET value = $1, updated_at = CURRENT_TIMESTAMP WHERE key = 'last_updated'",
             [new Date().toISOString()]
         );
+
+        await client.query('COMMIT');
 
         res.status(201).json({
             success: true,
@@ -184,21 +203,26 @@ router.post('/', async (req, res) => {
         });
 
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error creating main skill:', error);
         res.status(500).json({
             success: false,
             error: error.message
         });
+    } finally {
+        client.release();
     }
 });
 
 // PUT /api/skills/:id - Update main skill
 router.put('/:id', async (req, res) => {
+    const client = await db.getClient();
+
     try {
         const { id } = req.params;
-        const { name, category, weight, skillType } = req.body;
+        const { name, category, weight, skillType, subSkills } = req.body;
 
-        if (!name && category === undefined && weight === undefined && skillType === undefined) {
+        if (!name && category === undefined && weight === undefined && skillType === undefined && !subSkills) {
             return res.status(400).json({
                 success: false,
                 error: 'At least one field must be provided'
@@ -221,13 +245,16 @@ router.put('/:id', async (req, res) => {
             });
         }
 
+        await client.query('BEGIN');
+
         // Check if skill exists
-        const existingResult = await db.query(
+        const existingResult = await client.query(
             'SELECT id FROM main_skills WHERE id = $1',
             [id]
         );
 
         if (existingResult.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({
                 success: false,
                 error: 'Main skill not found'
@@ -235,16 +262,34 @@ router.put('/:id', async (req, res) => {
         }
 
         // Update main skill
-        const result = await db.query(
+        const result = await client.query(
             'UPDATE main_skills SET name = COALESCE($1, name), category = COALESCE($2, category), weight = COALESCE($3, weight), skill_type = COALESCE($4, skill_type) WHERE id = $5 RETURNING id, name, category, weight, skill_type',
             [name || null, category !== undefined ? category : null, weight || null, skillType || null, id]
         );
 
+        // Update sub-skills if provided
+        if (subSkills && Array.isArray(subSkills)) {
+            // Delete existing sub-skills
+            await client.query('DELETE FROM sub_skills WHERE main_skill_id = $1', [id]);
+
+            // Insert new sub-skills
+            for (const subSkillName of subSkills) {
+                if (subSkillName && typeof subSkillName === 'string') {
+                    await client.query(
+                        'INSERT INTO sub_skills (main_skill_id, name) VALUES ($1, $2)',
+                        [id, subSkillName.trim()]
+                    );
+                }
+            }
+        }
+
         // Update metadata
-        await db.query(
+        await client.query(
             "UPDATE metadata SET value = $1, updated_at = CURRENT_TIMESTAMP WHERE key = 'last_updated'",
             [new Date().toISOString()]
         );
+
+        await client.query('COMMIT');
 
         res.json({
             success: true,
@@ -252,11 +297,14 @@ router.put('/:id', async (req, res) => {
         });
 
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error updating main skill:', error);
         res.status(500).json({
             success: false,
             error: error.message
         });
+    } finally {
+        client.release();
     }
 });
 

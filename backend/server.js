@@ -9,6 +9,7 @@ const db = require('./db');
 const dataRoutes = require('./routes/data');
 const resourcesRoutes = require('./routes/resources');
 const skillsRoutes = require('./routes/skills');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,6 +29,7 @@ app.use((req, res, next) => {
 app.use('/api/data', dataRoutes);
 app.use('/api/resources', resourcesRoutes);
 app.use('/api/skills', skillsRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Metadata endpoint
 app.get('/api/metadata', async (req, res) => {
