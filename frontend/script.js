@@ -1,3 +1,33 @@
+// ============================================================
+// THEME TOGGLE
+// ============================================================
+(function () {
+    const html = document.documentElement;
+    const stored = localStorage.getItem('theme');
+    if (stored) html.setAttribute('data-theme', stored);
+
+    function updateToggleLabel(theme) {
+        const btn = document.getElementById('themeToggle');
+        if (!btn) return;
+        const span = btn.querySelector('span');
+        if (span) span.textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        updateToggleLabel(html.getAttribute('data-theme'));
+
+        document.getElementById('themeToggle').addEventListener('click', function () {
+            const current = html.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+            updateToggleLabel(next);
+            // Re-render charts with correct colours if they exist
+            if (typeof updateChartTheme === 'function') updateChartTheme();
+        });
+    });
+})();
+
 // Network Engineer Skills Matrix - Main JavaScript
 // Author: Generated for Skills Matrix System
 // Last Updated: 2026-01-29
@@ -893,7 +923,7 @@ function renderRadarChart(technicalSkillAverages, nonTechnicalSkillAverages) {
         teamRadarChart.destroy();
     }
 
-    teamRadarChart = new Chart(ctx, {
+    teamRadarChart = window._teamRadarChart = new Chart(ctx, {
         type: 'radar',
         data: {
             labels: labels,
@@ -2910,7 +2940,7 @@ async function renderCustomRadarChart() {
     const canvas = document.getElementById('customRadarChart');
     if (canvas) canvas.style.display = 'block';
 
-    customRadarChart = new Chart(ctx, {
+    customRadarChart = window._customRadarChart = new Chart(ctx, {
         type: 'radar',
         data: {
             labels: labels,
@@ -3443,3 +3473,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     await populateSubSkillCheckboxes();
     setupCustomChartEventListeners();
 });
+
+function updateChartTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+    const labelColor = isDark ? '#a0aec0' : '#4a5568';
+
+    [window._teamRadarChart, window._customRadarChart].forEach(function (chart) {
+        if (!chart) return;
+        const scales = chart.options.scales;
+        if (scales && scales.r) {
+            scales.r.grid.color = gridColor;
+            scales.r.ticks.color = labelColor;
+            scales.r.pointLabels.color = labelColor;
+        }
+        chart.update();
+    });
+}
