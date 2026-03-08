@@ -1646,13 +1646,6 @@ async function renderSkills() {
                 }
             }
 
-            // View button
-            if (target.classList.contains('btn-view')) {
-                e.preventDefault();
-                const skillId = target.dataset.skillId;
-                viewSkillDetails(skillId);
-            }
-
             // Edit button
             if (target.classList.contains('btn-edit')) {
                 e.preventDefault();
@@ -1682,14 +1675,11 @@ function displaySkillCards(skills) {
         return `
             <div class="resource-card" data-skill-id="${skill.id}" style="position: relative;">
                 <button class="delete-skill-btn" data-skill-id="${skill.id}" data-skill-name="${safeName}">×</button>
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                    <h4 style="margin: 0;">${skill.name}</h4>
-                    <span style="background: ${typeColor}; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${typeBadge}</span>
-                </div>
-                <p style="color: var(--text-light); font-size: 0.9rem; margin: 0.5rem 0;"><strong>Weight:</strong> ${skill.weight || 5}/10</p>
-                <p style="color: var(--text-light); font-size: 0.9rem;"><strong>${subSkillCount}</strong> sub-skills</p>
+                <h4 style="margin: 0 2rem 0.4rem 0;">${skill.name}</h4>
+                <span style="display: inline-block; background: ${typeColor}; color: white; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-bottom: 0.5rem;">${typeBadge}</span>
+                <p style="color: var(--text-light); font-size: 0.9rem; margin: 0.25rem 0;"><strong>Weight:</strong> ${skill.weight || 5}/10</p>
+                <p style="color: var(--text-light); font-size: 0.9rem; margin: 0;"><strong>${subSkillCount}</strong> sub-skills</p>
                 <div class="resource-card-actions">
-                    <button class="btn-view" data-skill-id="${skill.id}">View</button>
                     <button class="btn-edit" data-skill-id="${skill.id}">Edit</button>
                 </div>
             </div>
