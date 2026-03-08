@@ -5,24 +5,74 @@
     box-sizing: border-box;
 }
 
-:root {
-    --primary-color: #2563eb;
-    --secondary-color: #64748b;
-    --success-color: #10b981;
-    --danger-color: #ef4444;
-    --warning-color: #f59e0b;
-    --bg-color: #f8fafc;
-    --card-bg: #ffffff;
-    --text-color: #1e293b;
-    --border-color: #e2e8f0;
+/* ============================================================
+   THEME VARIABLES
+   ============================================================ */
 
-    /* Skill Level Colors */
+/* Dark mode (default) */
+[data-theme="dark"] {
+    --bg-main: #23272a;
+    --bg-nav: #1a1c1e;
+    --bg-card: #2b2f33;
+    --bg-input: #1a1c1e;
+    --accent: #00a3ff;
+    --accent-2: #00d1ff;
+    --accent-grad: #4d4dff;
+    --warning: #ffb000;
+    --danger: #ff4d4d;
+    --success: #00e676;
+    --text-primary: #ffffff;
+    --text-secondary: #a0aec0;
+    --border: rgba(255, 255, 255, 0.08);
+    --shadow: rgba(0, 0, 0, 0.4);
+    --hover-overlay: rgba(255, 255, 255, 0.05);
+
+    /* Skill level colours (dark) */
+    --level-0: #2b2f33;
+    --level-0-text: #a0aec0;
+    --level-1: #3d1f1f;
+    --level-1-text: #ff4d4d;
+    --level-2: #3d2e1a;
+    --level-2-text: #ffb000;
+    --level-3: #2e2e1a;
+    --level-3-text: #e6cc00;
+    --level-4: #1a2e22;
+    --level-4-text: #00e676;
+    --level-5: #00e676;
+    --level-5-text: #1a1c1e;
+}
+
+/* Light mode */
+[data-theme="light"] {
+    --bg-main: #f0f4f8;
+    --bg-nav: #ffffff;
+    --bg-card: #ffffff;
+    --bg-input: #f8fafc;
+    --accent: #00a3ff;
+    --accent-2: #00d1ff;
+    --accent-grad: #4d4dff;
+    --warning: #ffb000;
+    --danger: #ff4d4d;
+    --success: #00c853;
+    --text-primary: #1a1c1e;
+    --text-secondary: #4a5568;
+    --border: #e2e8f0;
+    --shadow: rgba(0, 0, 0, 0.08);
+    --hover-overlay: rgba(0, 163, 255, 0.04);
+
+    /* Skill level colours (light) */
     --level-0: #f1f5f9;
-    --level-1: #fecaca;
-    --level-2: #fdba74;
-    --level-3: #fde047;
-    --level-4: #86efac;
-    --level-5: #22c55e;
+    --level-0-text: #64748b;
+    --level-1: #fee2e2;
+    --level-1-text: #dc2626;
+    --level-2: #fef3c7;
+    --level-2-text: #d97706;
+    --level-3: #fefce8;
+    --level-3-text: #ca8a04;
+    --level-4: #dcfce7;
+    --level-4-text: #16a34a;
+    --level-5: #00c853;
+    --level-5-text: #ffffff;
 }
 
 body {
