@@ -2154,6 +2154,12 @@ footer {
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
 }
 .compare-pick { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; cursor: pointer; }
+/* Colour the user names in the picker by role family */
+.compare-pick.role-tech    .compare-pick-name { color: rgba(37, 99, 235, 1); font-weight: 500; }
+.compare-pick.role-nontech .compare-pick-name { color: rgba(16, 185, 129, 1); font-weight: 500; }
+/* Same colours on the User column of the compare heatmap */
+.compare-heatmap td.resource-name.name-tech    { color: rgba(37, 99, 235, 1); font-weight: 600; }
+.compare-heatmap td.resource-name.name-nontech { color: rgba(16, 185, 129, 1); font-weight: 600; }
 .compare-chart { min-height: 480px; }
 .compare-legend { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
 .legend-chip {

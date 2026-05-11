@@ -838,9 +838,6 @@ async function renderView(viewName) {
         case 'staffing':
             await renderStaffing();
             break;
-        case 'compare':
-            await renderCompare();
-            break;
         case 'quality':
             await renderQuality();
             break;
@@ -3789,11 +3786,16 @@ async function renderCompare() {
         comparePickedIds = data.resources.slice(0, 2).map(r => r.id);
     }
 
-    picker.innerHTML = '<p style="margin: 0 0 0.5rem;">Pick 2–4 team members:</p>' +
+    // Colour each name by role family (blue=engineering, green=project-management)
+    const pmRoles = new Set(['Project Manager', 'Project Coordinator', 'Senior Project Manager']);
+    const roleCls = (r) => pmRoles.has(r.job_role) ? 'role-nontech'
+                        : (r.job_role ? 'role-tech' : '');
+
+    picker.innerHTML = '<p style="margin: 0 0 0.5rem;">Pick 2–4 users:</p>' +
         data.resources.map(r => `
-            <label class="compare-pick">
+            <label class="compare-pick ${roleCls(r)}">
                 <input type="checkbox" value="${r.id}" ${comparePickedIds.includes(r.id) ? 'checked' : ''}>
-                ${r.name}
+                <span class="compare-pick-name">${escapeHtml(r.name)}</span>
             </label>
         `).join('');
 
@@ -3802,51 +3804,42 @@ async function renderCompare() {
             const checked = Array.from(picker.querySelectorAll('input:checked')).map(x => x.value);
             if (checked.length > 4) {
                 cb.checked = false;
-                showToast('Maximum 4 team members can be compared at once.', 'info');
+                showToast('Maximum 4 users can be compared at once.', 'info');
                 return;
             }
             comparePickedIds = checked;
-            drawCompareHeatmaps(data);
+            drawCompareHeatmap(data);
         });
     });
-    drawCompareHeatmaps(data);
+    drawCompareHeatmap(data);
 }
 
-function drawCompareHeatmaps(data) {
-    drawOneCompareHeatmap(
-        document.getElementById('compareHeatmapTech'),
-        data,
-        s => (s.skillType || 'technical') === 'technical'
-    );
-    drawOneCompareHeatmap(
-        document.getElementById('compareHeatmapNonTech'),
-        data,
-        s => (s.skillType || 'technical') === 'non-technical'
-    );
-}
-
-function drawOneCompareHeatmap(host, data, skillFilter) {
+function drawCompareHeatmap(data) {
+    const host = document.getElementById('compareHeatmap');
     if (!host) return;
     if (comparePickedIds.length < 2) {
-        host.innerHTML = '<p class="empty">Pick at least 2 team members above.</p>';
+        host.innerHTML = '<p class="empty">Pick at least 2 users above.</p>';
         return;
     }
-    const cols = data.skills.filter(skillFilter);
+    const cols = (data.skills || []).filter(s => s.subSkills && s.subSkills.length > 0);
     if (cols.length === 0) {
-        host.innerHTML = '<p class="empty">No skills of this type yet.</p>';
+        host.innerHTML = '<p class="empty">No skills tracked yet.</p>';
         return;
     }
+    const pmRoles = new Set(['Project Manager', 'Project Coordinator', 'Senior Project Manager']);
     const rows = comparePickedIds
         .map(id => data.resources.find(r => r.id === id))
         .filter(Boolean);
 
-    let html = '<table class="compare-heatmap"><thead><tr><th class="sticky-col">Resource</th>';
+    let html = '<table class="compare-heatmap"><thead><tr><th class="sticky-col">User</th>';
     cols.forEach(c => {
         html += `<th title="weight ${c.weight}">${escapeHtml(c.name)}</th>`;
     });
     html += '</tr></thead><tbody>';
     rows.forEach(r => {
-        html += `<tr><td class="resource-name sticky-col">${escapeHtml(r.name)}</td>`;
+        const rcls = pmRoles.has(r.job_role) ? 'name-nontech'
+                    : (r.job_role ? 'name-tech' : '');
+        html += `<tr><td class="resource-name sticky-col ${rcls}">${escapeHtml(r.name)}</td>`;
         cols.forEach(c => {
             const lvl = (r.skills && r.skills[c.name]) || 0;
             html += `<td class="skill-cell level-${lvl}" title="${escapeHtml(r.name)} — ${escapeHtml(c.name)}: ${lvl || 'none'}">${lvl || '-'}</td>`;
@@ -3855,7 +3848,7 @@ function drawOneCompareHeatmap(host, data, skillFilter) {
     });
     html += '</tbody>';
 
-    // Footer: per-skill team average across the SELECTED resources
+    // Footer: per-skill average across the SELECTED users
     html += '<tfoot><tr><th class="sticky-col">Group avg</th>';
     cols.forEach(c => {
         const vals = rows.map(r => (r.skills && r.skills[c.name]) || 0).filter(v => v > 0);

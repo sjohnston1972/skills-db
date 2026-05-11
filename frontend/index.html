@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=85">
+    <link rel="stylesheet" href="styles.css?v=86">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -56,7 +56,6 @@
             <button class="nav-btn" data-view="skills">Skills</button>
             <button class="nav-btn" data-view="radar">Custom Radar</button>
             <button class="nav-btn" data-view="staffing">Project Matching</button>
-            <button class="nav-btn" data-view="compare">Compare</button>
             <button class="nav-btn" data-view="training">Training</button>
             <button class="nav-btn" data-view="insights">Insights</button>
             <button class="nav-btn" data-view="quality">Data Quality</button>
@@ -101,7 +100,7 @@
                 </div>
                 <div class="metric-card metric-card--success" id="expertsCard">
                     <div class="metric-value" id="totalExperts">0</div>
-                    <div class="metric-label">Team Experts (L4+)</div>
+                    <div class="metric-label">Expert Skills (L4+)</div>
                     <small class="metric-hint metric-split">
                         <span><span class="metric-type-label">Tech</span><span class="dot dot-tech"></span><span id="totalExpertsTech">—</span></span>
                         <span><span class="metric-type-label">Non-tech</span><span class="dot dot-nontech"></span><span id="totalExpertsNonTech">—</span></span>
@@ -319,22 +318,10 @@
             <div id="staffingResults" class="staffing-results" style="margin-top: 1.5rem;"></div>
         </section>
 
-        <!-- Compare View -->
-        <section id="compare-view" class="view">
-            <h2>Compare Resources</h2>
-            <p class="section-description">Pick 2–4 team members; their main-skill profiles are shown as Technical and Non-Technical heatmaps stacked one above the other so each can use the full page width.</p>
-            <div id="compareResourcePicker" class="compare-picker"></div>
-            <div class="compare-heatmap-pair">
-                <div class="compare-heatmap-cell">
-                    <h3>Technical Skills</h3>
-                    <div id="compareHeatmapTech" class="compare-heatmap-table"></div>
-                </div>
-                <div class="compare-heatmap-cell">
-                    <h3>Non-Technical Skills</h3>
-                    <div id="compareHeatmapNonTech" class="compare-heatmap-table"></div>
-                </div>
-            </div>
-        </section>
+        <!-- Compare View was removed: the same comparison is covered by the
+             Skills Heatmap with the "Hide unrated rows/cols" filter. The
+             renderCompare / drawCompareHeatmap JS is left in place but
+             unreferenced in case we want to re-introduce the tab later. -->
 
         <!-- Training View -->
         <section id="training-view" class="view">
@@ -810,6 +797,6 @@
     </footer>
 
     <div id="toastContainer"></div>
-    <script src="script.js?v=115"></script>
+    <script src="script.js?v=117"></script>
 </body>
 </html>
