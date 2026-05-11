@@ -268,10 +268,39 @@ router.post('/match', async (req, res) => {
             GROUP BY ms.id
         `);
 
+        // Synonym aliases: when the user uses a common shorthand or alternative
+        // name, rewrite it to the canonical phrase that appears in our skill
+        // catalogue. Add lower-case both sides.
+        const ALIASES = {
+            'dot1x': '802.1x',
+            '8021x': '802.1x',
+            'k8s': 'kubernetes',
+            'aad': 'azure ad',
+            'aks': 'azure kubernetes',
+            'eks': 'aws kubernetes',
+            'gke': 'gcp kubernetes',
+            'radius': 'cisco ise',           // closest catalogued skill
+            'tacacs': 'cisco ise',
+            'sdwan': 'sd-wan',
+            'sd wan': 'sd-wan',
+            'iam': 'identity',
+            'vlans': 'vlan',
+            'routers': 'routing',
+            'switches': 'switching',
+            'pmp': 'project management professional',
+            'csm': 'certified scrum master',
+        };
+
         // Normalise spec: lowercase, non-alphanumeric → space, collapse runs.
-        // Then tokenise to a Set of whole words so all matching is at word
-        // boundaries (no more "prism" matching "prisma" by substring).
-        const normSpec = spec.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+        // Apply alias substitutions on the normalised string, then re-normalise
+        // because aliases can introduce punctuation (e.g. "802.1x").
+        const normalise = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+        let normSpec = normalise(spec);
+        for (const [alias, canonical] of Object.entries(ALIASES)) {
+            const re = new RegExp('(^|\\s)' + alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)', 'g');
+            normSpec = normSpec.replace(re, `$1${canonical}$2`);
+        }
+        normSpec = normalise(normSpec);
         const specWords = new Set(normSpec.split(' ').filter(Boolean));
 
         // Common English filler that creates false positives (e.g. "and"
@@ -465,35 +494,80 @@ router.post('/match/ai', async (req, res) => {
             return res.status(500).json({ success: false, error: 'Rule-based matcher failed' });
         }
 
-        // Build a compact prompt
+        // Fetch the full catalogue + team data so the AI can match synonyms /
+        // domain-equivalent terms even when the rule-based path returned little.
+        const catalogueRows = (await db.query(`
+            SELECT ms.name AS main_name, ms.weight, ms.skill_type,
+                   ARRAY_AGG(ss.name ORDER BY ss.name) FILTER (WHERE ss.name IS NOT NULL) AS subs
+            FROM main_skills ms
+            LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+            GROUP BY ms.id
+            ORDER BY ms.skill_type, ms.name
+        `)).rows;
+        const catalogueText = catalogueRows.map(r =>
+            `- ${r.main_name} (${r.skill_type}, weight ${r.weight}): ${(r.subs || []).join(', ') || '—'}`
+        ).join('\n');
+
+        const teamRows = (await db.query(`
+            SELECT r.name, r.job_role,
+                   ms.name AS main_skill,
+                   COALESCE(ROUND(AVG(rss.level)::numeric)::int, 0) AS level
+            FROM resources r
+            CROSS JOIN main_skills ms
+            LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+            LEFT JOIN resource_sub_skills rss ON rss.sub_skill_id = ss.id AND rss.resource_id = r.id
+            GROUP BY r.id, r.name, r.job_role, ms.name
+            ORDER BY r.name, ms.name
+        `)).rows;
+        const byPerson = new Map();
+        for (const row of teamRows) {
+            if (!byPerson.has(row.name)) byPerson.set(row.name, { role: row.job_role, skills: [] });
+            if (Number(row.level) > 0) byPerson.get(row.name).skills.push(`${row.main_skill}=${row.level}`);
+        }
+        const teamText = Array.from(byPerson.entries())
+            .map(([name, info]) => `- ${name} (${info.role || 'unknown role'}): ${info.skills.join(', ') || 'no ratings'}`)
+            .join('\n');
+
         const reqsText = (ruleData.requirements || []).map(r =>
             `- ${r.mainSkill} ≥ ${r.minLevel}`
         ).join('\n');
         const candsText = (ruleData.candidates || []).slice(0, 8).map((c, i) =>
-            `${i + 1}. ${c.name} — met ${c.requirements_met}/${c.requirements_total} requirements, ` +
-            `matched: ${(c.matched || []).map(m => `${m.skill}(L${m.level})`).join(', ') || 'none'}, ` +
-            `gaps: ${(c.gaps || []).map(g => `${g.skill}(L${g.level})`).join(', ') || 'none'}`
+            `${i + 1}. ${c.name} — met ${c.requirements_met}/${c.requirements_total} requirements`
         ).join('\n');
 
-        const prompt = `You are helping a delivery manager pick the right person for a project.
+        const prompt = `You are a delivery manager picking the right team member for a project.
+You have access to the full skill catalogue and every team member's main-skill levels (0-5).
 
-Project spec:
+PROJECT SPEC:
 """
 ${spec}
 """
 
-Skills the rule-based matcher inferred from the spec:
-${reqsText || '(none)'}
+SKILL CATALOGUE (use this to map the spec to specific skills — apply your own
+domain knowledge for synonyms, e.g. "dot1x" → "802.1x", "K8s" → "Kubernetes",
+"RADIUS" → "Cisco ISE", "Prisma" → "Palo Alto Prisma"):
+${catalogueText}
 
-Top candidates from the rule-based matcher (their main-skill levels are 0-5):
+TEAM (each person's MAIN-skill levels, 1-5, only non-zero shown):
+${teamText}
+
+RULE-BASED MATCHER inferred these skills from the spec:
+${reqsText || '(nothing)'}
+
+RULE-BASED MATCHER top candidates:
 ${candsText || '(none)'}
 
-Write a short, plain-English recommendation (≤ 200 words):
-1. Confirm or refine which skills the project really needs (be specific and call out anything the matcher missed or got wrong).
-2. Recommend the top 1-2 people and explain why in one sentence each, citing concrete skill levels.
-3. Note any meaningful tradeoff or risk (e.g. "Steven is the best fit but is sole expert in Security — pulling him onto this project is a bus-factor risk").
+Write a short, plain-English recommendation (≤ 200 words, no headers, no bullet salad):
 
-Be direct and concrete. No headers, no bullet salad — readable prose.`;
+1. Confirm or refine which skills the project really needs. If the rule-based
+   matcher missed something obvious (synonyms, acronyms, domain shorthand),
+   call that out. If the spec is too vague to map to a specific catalogue
+   skill, name what you'd ask for to clarify.
+2. Pick the top 1-2 people and justify each in one sentence with concrete
+   levels (e.g. "Steven Johnston — L4 Security, L3 Cisco Enterprise").
+3. Flag any meaningful tradeoff (e.g. sole expert / bus-factor risk).
+
+Be direct and concrete.`;
 
         // Call Anthropic
         const aiRes = await fetch('https://api.anthropic.com/v1/messages', {

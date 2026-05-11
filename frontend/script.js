@@ -1813,8 +1813,14 @@ async function displaySearchResults(resources) {
                </div>`
             : '';
 
+        // Resource accent: blue for tech-leaning roles, green for project/PM roles.
+        // Used as a left-border colour on the card so you can scan the team at a glance.
+        const pmRoles = new Set(['Project Manager', 'Project Coordinator', 'Senior Project Manager']);
+        const roleClass = pmRoles.has(eng.job_role) ? 'role-nontech'
+                        : (eng.job_role ? 'role-tech' : '');
+
         return `
-            <div class="resource-card${soleExpertSkills.length > 0 ? ' is-spof' : ''}" data-resource-id="${eng.id}" style="position: relative;">
+            <div class="resource-card ${roleClass}${soleExpertSkills.length > 0 ? ' is-spof' : ''}" data-resource-id="${eng.id}" style="position: relative;">
                 <button class="delete-resource-btn" data-resource-id="${eng.id}" data-resource-name="${safeName}">×</button>
                 <h4>${eng.name}</h4>
                 ${eng.job_role ? `<div class="resource-role">${escapeHtml(eng.job_role)}</div>` : ''}
@@ -1939,11 +1945,11 @@ async function showResourceTooltip(cardElement, resource) {
 
     // "Top skills" — proficient+ only (≥3), sorted by importance = level × weight.
     // (Matches the resource-card chip rule, so the tooltip never disagrees with
-    // what the card itself is showing.)
+    // what the card itself is showing.) Capped at 5 to keep the tooltip compact.
     const topSubSkills = all
         .filter(s => s.level >= 3)
         .sort((a, b) => (b.level * b.weight) - (a.level * a.weight))
-        .slice(0, 10);
+        .slice(0, 5);
 
     // "Areas to develop" — L1-2 only, lowest first. Renamed from "gaps" so it
     // doesn't collide with the dashboard's team-level priority-gap concept.
@@ -1961,15 +1967,12 @@ async function showResourceTooltip(cardElement, resource) {
 
     let tooltipHTML = '';
 
-    tooltipHTML += '<h5>Top skills (proficient+)</h5>';
+    // Compact single-line items so the tooltip stays small.
+    tooltipHTML += '<h5>Top skills</h5>';
     if (topSubSkills.length > 0) {
         tooltipHTML += '<ul>';
         topSubSkills.forEach(s => {
-            tooltipHTML += `
-                <li>
-                    <span class="skill-name">${escapeHtml(s.name)}<br><small style="color: var(--text-secondary); font-size: 0.7rem;">${escapeHtml(s.mainName)}</small></span>
-                    <span class="skill-level">L${s.level}</span>
-                </li>`;
+            tooltipHTML += `<li><span class="skill-name">${escapeHtml(s.name)}</span><span class="skill-level">L${s.level}</span></li>`;
         });
         tooltipHTML += '</ul>';
     } else {
@@ -1980,11 +1983,7 @@ async function showResourceTooltip(cardElement, resource) {
         tooltipHTML += '<div class="section-divider"></div>';
         tooltipHTML += '<h5>Areas to develop</h5><ul>';
         developing.forEach(s => {
-            tooltipHTML += `
-                <li>
-                    <span class="skill-name">${escapeHtml(s.name)}<br><small style="color: var(--text-secondary); font-size: 0.7rem;">${escapeHtml(s.mainName)}</small></span>
-                    <span class="skill-level" style="background: rgba(248, 113, 113, 0.3);">L${s.level}</span>
-                </li>`;
+            tooltipHTML += `<li><span class="skill-name">${escapeHtml(s.name)}</span><span class="skill-level" style="background: rgba(248, 113, 113, 0.3);">L${s.level}</span></li>`;
         });
         tooltipHTML += '</ul>';
     }

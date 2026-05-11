@@ -2268,6 +2268,31 @@ footer {
     margin: 0 0 0.4rem;
 }
 
+/* Resource-card accent by role family.
+   Blue = technical (engineer/lead/consultant); Green = project (PM/PC).
+   Matches the tech/non-tech palette used on the dashboard radar + dot legend. */
+.resource-card.role-tech {
+    border-left: 4px solid rgba(37, 99, 235, 1);
+}
+.resource-card.role-tech .resource-role {
+    color: rgba(37, 99, 235, 1);
+    background: rgba(37, 99, 235, 0.10);
+    border-color: rgba(37, 99, 235, 0.4);
+}
+.resource-card.role-nontech {
+    border-left: 4px solid rgba(16, 185, 129, 1);
+}
+.resource-card.role-nontech .resource-role {
+    color: rgba(16, 185, 129, 1);
+    background: rgba(16, 185, 129, 0.10);
+    border-color: rgba(16, 185, 129, 0.4);
+}
+/* SPOF amber top border + role-coloured left border can co-exist */
+.resource-card.is-spof.role-tech,
+.resource-card.is-spof.role-nontech {
+    /* keep both: top stripe (SPOF) + left stripe (role) */
+}
+
 .resource-no-skills {
     margin: 0.5rem 0 0.75rem;
     font-size: 0.8rem;
