@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Team Skills Matrix — Signed Out</title>
+    <style>
+        :root {
+            --bg-main: #23272a;
+            --bg-card: #2b2f33;
+            --accent: #00a3ff;
+            --accent-2: #00d1ff;
+            --text-primary: #ffffff;
+            --text-secondary: #a0aec0;
+            --border: rgba(255, 255, 255, 0.08);
+            --shadow: rgba(0, 0, 0, 0.4);
+        }
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg-main: #f0f4f8;
+                --bg-card: #ffffff;
+                --text-primary: #1a1c1e;
+                --text-secondary: #4a5568;
+                --border: #e2e8f0;
+                --shadow: rgba(0, 0, 0, 0.08);
+            }
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; height: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.6;
+        }
+        .welcome {
+            max-width: 560px;
+            width: 90%;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 3rem 2.5rem;
+            box-shadow: 0 12px 40px var(--shadow);
+            text-align: center;
+        }
+        .welcome h1 { margin: 0 0 0.5rem; color: var(--text-primary); font-size: 2rem; }
+        .welcome .lead { color: var(--text-secondary); margin: 0 0 2rem; font-size: 1.05rem; }
+        .welcome-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        .sign-in-btn {
+            font-size: 1rem;
+            padding: 0.75rem 2.5rem;
+            background-color: var(--accent);
+            color: #ffffff;
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.15s, box-shadow 0.15s, transform 0.05s;
+        }
+        .sign-in-btn:hover { background: var(--accent-2); box-shadow: 0 0 14px rgba(0, 163, 255, 0.4); }
+        .sign-in-btn:active { transform: translateY(1px); }
+        .welcome-meta {
+            display: flex; gap: 1.5rem; justify-content: center;
+            margin: 2rem 0 0; padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            text-align: center;
+        }
+        .welcome-meta div { min-width: 100px; }
+        .welcome-meta strong { color: var(--text-primary); display: block; margin-bottom: 0.2rem; }
+        .footer-note {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            margin-top: 1.5rem;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="welcome">
+        <div class="welcome-icon">🔒</div>
+        <h1>You're signed out</h1>
+        <p class="lead">
+            Thanks for using the Project Team Skills Matrix.<br>
+            You'll need to sign back in to continue.
+        </p>
+        <button class="sign-in-btn" id="signInBtn">Sign in</button>
+        <div class="welcome-meta">
+            <div><strong>Resources</strong>tracked here</div>
+            <div><strong>Skills</strong>across the team</div>
+            <div><strong>Trainings</strong>&amp; certifications</div>
+        </div>
+        <p class="footer-note">If your browser still has cached credentials, just click "Sign in" and you should land back on the dashboard.</p>
+    </div>
+    <script>
+        document.getElementById('signInBtn').addEventListener('click', () => {
+            window.location.href = '/';
+        });
+    </script>
+</body>
+</html>

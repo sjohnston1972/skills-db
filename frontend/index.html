@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=51">
+    <link rel="stylesheet" href="styles.css?v=84">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -15,25 +15,35 @@
                 <h1>Project Team Skills Matrix</h1>
                 <p class="tagline">Team Capability Tracking &amp; Skills Gap Analysis</p>
             </div>
-            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
-                <!-- Moon icon (shown in dark mode) -->
-                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                </svg>
-                <!-- Sun icon (shown in light mode) -->
-                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/>
-                    <line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                    <line x1="1" y1="12" x2="3" y2="12"/>
-                    <line x1="21" y1="12" x2="23" y2="12"/>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                </svg>
-                <span>Light mode</span>
-            </button>
+            <div class="header-actions">
+                <button class="btn-secondary sign-out-btn" id="signOutBtn" title="Sign out">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                    <span>Sign out</span>
+                </button>
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                    <!-- Moon icon (shown in dark mode) -->
+                    <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <!-- Sun icon (shown in light mode) -->
+                    <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <span>Light mode</span>
+                </button>
+            </div>
         </div>
     </header>
 
@@ -45,6 +55,11 @@
             <button class="nav-btn" data-view="search">Resources</button>
             <button class="nav-btn" data-view="skills">Skills</button>
             <button class="nav-btn" data-view="radar">Custom Radar</button>
+            <button class="nav-btn" data-view="staffing">Project Matching</button>
+            <button class="nav-btn" data-view="compare">Compare</button>
+            <button class="nav-btn" data-view="training">Training</button>
+            <button class="nav-btn" data-view="insights">Insights</button>
+            <button class="nav-btn" data-view="quality">Data Quality</button>
             <button class="nav-btn" data-view="management">Settings</button>
         </div>
     </nav>
@@ -56,26 +71,54 @@
         <section id="dashboard-view" class="view active">
             <h2>Team Overview Dashboard</h2>
 
+            <!-- Expiry alert banner (only shown when there are certs nearing expiry) -->
+            <div id="expiryBanner" class="dashboard-alert" hidden></div>
+
             <div class="metrics-grid">
                 <div class="metric-card clickable" id="totalResourcesCard" onclick="navigateToSearch()">
                     <div class="metric-value" id="totalResources">0</div>
                     <div class="metric-label">Total Resources</div>
-                    <small class="metric-hint">Click to view all</small>
+                    <small class="metric-hint metric-split">
+                        <span><span class="metric-type-label">Tech</span><span class="dot dot-tech"></span><span id="totalResourcesTech">—</span></span>
+                        <span><span class="metric-type-label">Non-tech</span><span class="dot dot-nontech"></span><span id="totalResourcesNonTech">—</span></span>
+                    </small>
                 </div>
                 <div class="metric-card clickable" id="skillsTrackedCard" onclick="navigateToRadar()">
                     <div class="metric-value" id="totalSkills">0</div>
                     <div class="metric-label">Skills Tracked</div>
-                    <small class="metric-hint">Click to explore</small>
+                    <small class="metric-hint metric-split">
+                        <span><span class="metric-type-label">Tech</span><span class="dot dot-tech"></span><span id="totalSkillsTech">—</span></span>
+                        <span><span class="metric-type-label">Non-tech</span><span class="dot dot-nontech"></span><span id="totalSkillsNonTech">—</span></span>
+                    </small>
                 </div>
                 <div class="metric-card metric-card--success" id="avgTeamSkillCard">
                     <div class="metric-value" id="avgTeamSkill">—</div>
                     <div class="metric-label">Avg Team Skill</div>
-                    <small class="metric-hint">Out of 5</small>
+                    <small class="metric-hint metric-split">
+                        <span><span class="metric-type-label">Tech</span><span class="dot dot-tech"></span><span id="avgTeamSkillTech">—</span></span>
+                        <span><span class="metric-type-label">Non-tech</span><span class="dot dot-nontech"></span><span id="avgTeamSkillNonTech">—</span></span>
+                    </small>
                 </div>
-                <div class="metric-card metric-card--warning" id="topGapCard">
-                    <div class="metric-value metric-value--sm" id="topGapSkill">—</div>
-                    <div class="metric-label">Top Priority Gap</div>
-                    <small class="metric-hint">Highest demand deficit</small>
+                <div class="metric-card metric-card--success" id="expertsCard">
+                    <div class="metric-value" id="totalExperts">0</div>
+                    <div class="metric-label">Team Experts (L4+)</div>
+                    <small class="metric-hint metric-split">
+                        <span><span class="metric-type-label">Tech</span><span class="dot dot-tech"></span><span id="totalExpertsTech">—</span></span>
+                        <span><span class="metric-type-label">Non-tech</span><span class="dot dot-nontech"></span><span id="totalExpertsNonTech">—</span></span>
+                    </small>
+                </div>
+                <div class="metric-card metric-card--info clickable" id="trainingCard" onclick="navigateToTraining()">
+                    <div class="metric-value" id="trainingActive">0</div>
+                    <div class="metric-label">Trainings In&nbsp;Progress</div>
+                    <small class="metric-hint" id="trainingHint">— planned, — achieved</small>
+                </div>
+                <div class="metric-card metric-card--warning" id="spofCard" title="Main skills where only one team member is rated L4+ (or where no-one is)">
+                    <div class="metric-value" id="spofValue">0</div>
+                    <div class="metric-label">Single&nbsp;Points of&nbsp;Failure</div>
+                    <small class="metric-hint metric-split">
+                        <span><span class="metric-type-label">1 expert</span><span class="dot dot-warn"></span><span id="spofOne">—</span></span>
+                        <span><span class="metric-type-label">No expert</span><span class="dot dot-danger"></span><span id="spofZero">—</span></span>
+                    </small>
                 </div>
             </div>
 
@@ -111,7 +154,13 @@
 
             <div class="dashboard-main-grid">
                 <div class="chart-container">
-                    <h3>Team Skills Radar Chart</h3>
+                    <div class="radar-header">
+                        <h3>Team Skills Radar</h3>
+                        <div class="skill-type-toggle" role="tablist" aria-label="Skill type">
+                            <button class="stt-btn stt-active" data-skill-type="technical">Technical</button>
+                            <button class="stt-btn" data-skill-type="non-technical">Non-Technical</button>
+                        </div>
+                    </div>
                     <canvas id="teamRadarChart"></canvas>
                 </div>
                 <div class="skills-lists">
@@ -126,41 +175,38 @@
                 </div>
             </div>
 
-            <div class="weighted-gaps-section">
-                <h3>Priority Skills Gaps (Weighted by Demand)</h3>
-                <p class="section-description">Skills gaps ranked by priority score. Higher scores indicate critical skills with high demand and low team proficiency. <strong>Score = (5 - Current Avg) × Weight</strong></p>
-                <ul id="weightedGaps" class="weighted-gaps-list">
-                    <!-- Weighted gaps will be generated here -->
-                </ul>
-            </div>
 
         </section>
 
         <!-- Custom Radar View -->
         <section id="radar-view" class="view">
-            <h2>Custom Sub-Skills Radar Chart</h2>
-            <p class="section-description">Select specific sub-skills to compare across the team. Hover over data points to see the top 10 resources for each skill.</p>
-
             <div class="custom-chart-section">
                 <div class="subskill-selector">
-                    <div class="selector-header">
-                        <h4>Select Sub-Skills:</h4>
-                        <div class="selector-actions">
-                            <button id="clearSubSkills" class="btn-secondary">Clear All</button>
-                            <button id="updateCustomChart" class="btn-primary">Update Chart</button>
+                    <div class="selector-fixed-header">
+                        <div class="selector-header">
+                            <h4>Select Sub-Skills</h4>
+                            <div class="selector-actions">
+                                <button id="clearSubSkills" class="btn-secondary">Clear All</button>
+                                <button id="updateCustomChart" class="btn-primary">Update Chart</button>
+                            </div>
+                        </div>
+                        <div class="search-filter">
+                            <input type="text" id="subSkillSearch" placeholder="Search sub-skills..." autocomplete="off">
+                            <span class="search-count" id="searchCount"></span>
                         </div>
                     </div>
-                    <div class="search-filter">
-                        <input type="text" id="subSkillSearch" placeholder="Search sub-skills..." autocomplete="off">
-                        <span class="search-count" id="searchCount"></span>
-                    </div>
-                    <div id="subSkillCheckboxes" class="checkbox-grid">
-                        <!-- Checkboxes will be generated here -->
+                    <div class="selector-scroll-body">
+                        <div id="subSkillCheckboxes" class="checkbox-grid">
+                            <!-- Checkboxes will be generated here -->
+                        </div>
                     </div>
                 </div>
 
-                <div class="chart-container">
-                    <canvas id="customRadarChart"></canvas>
+                <div class="chart-container radar-chart-panel">
+                    <div id="radarPlaceholder" class="radar-placeholder">
+                        <span>Select skills to populate the chart</span>
+                    </div>
+                    <canvas id="customRadarChart" style="display:none;"></canvas>
                 </div>
             </div>
         </section>
@@ -169,19 +215,62 @@
         <section id="heatmap-view" class="view">
             <h2>Skills Heatmap</h2>
             <div class="heatmap-controls">
-                <button id="sortByName" class="btn-secondary">Sort by Name</button>
-                <button id="sortByAvgSkill" class="btn-secondary">Sort by Avg Skill</button>
+                <div class="hm-control-group">
+                    <span class="hm-label">Sort:</span>
+                    <div class="skill-type-toggle">
+                        <button id="sortByName" class="stt-btn stt-active">Name</button>
+                        <button id="sortByAvgSkill" class="stt-btn">Avg Skill</button>
+                    </div>
+                </div>
+                <div class="hm-control-group">
+                    <span class="hm-label">Mode:</span>
+                    <div class="skill-type-toggle">
+                        <button id="hmModeMain" class="stt-btn stt-active">Main skills</button>
+                        <button id="hmModeSub" class="stt-btn">Sub-skills</button>
+                    </div>
+                </div>
+                <div class="hm-control-group">
+                    <span class="hm-label">Type:</span>
+                    <div class="skill-type-toggle" id="hmTypeToggle">
+                        <button class="stt-btn" data-skill-type="all">All</button>
+                        <button class="stt-btn stt-active" data-skill-type="technical">Technical</button>
+                        <button class="stt-btn" data-skill-type="non-technical">Non-Technical</button>
+                    </div>
+                </div>
+                <div class="hm-control-group">
+                    <span class="hm-label">Min level:</span>
+                    <select id="hmFilterMinLevel">
+                        <option value="0">0 — show all</option>
+                        <option value="1">≥ 1</option>
+                        <option value="2">≥ 2</option>
+                        <option value="3">≥ 3</option>
+                        <option value="4">≥ 4</option>
+                        <option value="5">= 5</option>
+                    </select>
+                </div>
+                <label class="hm-checkbox"><input type="checkbox" id="hmHideUnrated"> Hide unrated rows/cols</label>
+                <label class="hm-checkbox"><input type="checkbox" id="hmEditMode"> Edit mode</label>
             </div>
             <div class="heatmap-legend">
-                <span class="legend-item"><span class="color-box level-0"></span> None</span>
-                <span class="legend-item"><span class="color-box level-1"></span> Level 1 - Beginner</span>
-                <span class="legend-item"><span class="color-box level-2"></span> Level 2 - Developing</span>
-                <span class="legend-item"><span class="color-box level-3"></span> Level 3 - Proficient</span>
-                <span class="legend-item"><span class="color-box level-4"></span> Level 4 - Expert</span>
-                <span class="legend-item"><span class="color-box level-5"></span> Level 5 - Master</span>
+                <span class="legend-item" data-level="0"><span class="color-box level-0"></span> None</span>
+                <span class="legend-item" data-level="1"><span class="color-box level-1"></span> Level 1 - Beginner</span>
+                <span class="legend-item" data-level="2"><span class="color-box level-2"></span> Level 2 - Developing</span>
+                <span class="legend-item" data-level="3"><span class="color-box level-3"></span> Level 3 - Proficient</span>
+                <span class="legend-item" data-level="4"><span class="color-box level-4"></span> Level 4 - Expert</span>
+                <span class="legend-item" data-level="5"><span class="color-box level-5"></span> Level 5 - Master</span>
+                <span class="legend-spacer"></span>
+                <span class="legend-item legend-stale"><span class="freshness-dot stale"></span> Stale (&gt;365 days)</span>
             </div>
             <div id="heatmapContainer" class="heatmap-scroll">
                 <!-- Heatmap will be generated here -->
+            </div>
+            <!-- Cell-drill popover -->
+            <div id="heatmapPopover" class="hm-popover" hidden>
+                <div class="hm-popover-header">
+                    <h4 id="hmPopoverTitle">Skill breakdown</h4>
+                    <button class="hm-popover-close" id="hmPopoverClose">&times;</button>
+                </div>
+                <div id="hmPopoverBody" class="hm-popover-body"></div>
             </div>
         </section>
 
@@ -216,6 +305,238 @@
             </div>
         </section>
 
+        <!-- Project Matching View (formerly "Staffing") -->
+        <section id="staffing-view" class="view">
+            <h2>Project Matching</h2>
+            <p class="section-description">Add skill requirements and see which team members match — or are one level away.</p>
+            <div class="staffing-builder">
+                <div id="staffingRequirements" class="staffing-requirements"></div>
+                <div class="flex-row-gap" style="margin-top: 1rem;">
+                    <button id="addStaffingReq" class="btn-secondary">+ Add requirement</button>
+                    <button id="runStaffingMatch" class="btn-primary">Find Team Members</button>
+                </div>
+            </div>
+            <div id="staffingResults" class="staffing-results" style="margin-top: 1.5rem;"></div>
+        </section>
+
+        <!-- Compare View -->
+        <section id="compare-view" class="view">
+            <h2>Compare Resources</h2>
+            <p class="section-description">Pick 2–4 team members; their main-skill profiles are shown as Technical and Non-Technical heatmaps stacked one above the other so each can use the full page width.</p>
+            <div id="compareResourcePicker" class="compare-picker"></div>
+            <div class="compare-heatmap-pair">
+                <div class="compare-heatmap-cell">
+                    <h3>Technical Skills</h3>
+                    <div id="compareHeatmapTech" class="compare-heatmap-table"></div>
+                </div>
+                <div class="compare-heatmap-cell">
+                    <h3>Non-Technical Skills</h3>
+                    <div id="compareHeatmapNonTech" class="compare-heatmap-table"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Training View -->
+        <section id="training-view" class="view">
+            <h2>Training &amp; Certifications</h2>
+            <p class="section-description">Track Cisco and project-management certifications. Manage the catalogue, then assign trainings to resources with target dates.</p>
+
+            <div class="training-tabs" role="tablist">
+                <button class="t-tab t-tab-active" data-t-tab="assignments">Assignments</button>
+                <button class="t-tab" data-t-tab="catalogue">Catalogue</button>
+                <button class="t-tab" data-t-tab="certifications">Certifications</button>
+            </div>
+
+            <!-- Assignments sub-view -->
+            <div class="t-pane t-pane-active" data-t-pane="assignments">
+                <div class="flex-row-gap" style="margin-bottom: 1rem;">
+                    <div class="hm-control-group">
+                        <span class="hm-label">Resource:</span>
+                        <select id="trainingResourceSelect"></select>
+                    </div>
+                    <button class="btn-primary" id="trainingAssignBtn">Assign</button>
+                </div>
+                <div id="trainingAssignmentsList" class="training-assignments"></div>
+            </div>
+
+            <!-- Catalogue sub-view -->
+            <div class="t-pane" data-t-pane="catalogue">
+                <div class="flex-row-gap" style="margin-bottom: 1rem;">
+                    <div class="search-box search-inline">
+                        <input type="text" id="trainingCatalogueSearch" placeholder="Search trainings...">
+                    </div>
+                    <button class="btn-primary" id="trainingAddBtn">Add Training</button>
+                </div>
+                <div id="trainingCatalogueList" class="training-catalogue"></div>
+            </div>
+
+            <!-- Certifications sub-view: team-wide status chart + expiry timeline -->
+            <div class="t-pane" data-t-pane="certifications">
+                <div class="cert-chart-card">
+                    <h3>Certification Status Across the Team</h3>
+                    <p class="section-description">Top certifications grouped by status. Click "Catalogue" to see the full list.</p>
+                    <div style="position: relative; height: 420px;">
+                        <canvas id="certStatusChart"></canvas>
+                    </div>
+                </div>
+                <div class="cert-expiry-card">
+                    <h3>Upcoming Expiries</h3>
+                    <p class="section-description">Achieved certifications with an expiry date in the next 12 months, oldest first.</p>
+                    <div id="certExpiryList"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Add / Edit Training Modal -->
+        <div id="trainingEditModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="trainingEditTitle">Add Training</h3>
+                    <button class="modal-close" onclick="closeTrainingEditModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="trEditName">Name:</label>
+                        <input type="text" id="trEditName" placeholder="e.g. Cisco Certified Network Associate">
+                    </div>
+                    <div class="form-group">
+                        <label for="trEditCode">Code:</label>
+                        <input type="text" id="trEditCode" placeholder="e.g. CCNA">
+                    </div>
+                    <div class="form-group">
+                        <label for="trEditVendor">Vendor:</label>
+                        <input type="text" id="trEditVendor" placeholder="e.g. Cisco, PMI, Axelos">
+                    </div>
+                    <div class="form-group">
+                        <label for="trEditCategory">Category:</label>
+                        <input type="text" id="trEditCategory" list="trCategorySuggestions"
+                               placeholder="Pick a suggestion or type a custom category"
+                               autocomplete="off">
+                        <datalist id="trCategorySuggestions">
+                            <option value="cisco"></option>
+                            <option value="networking"></option>
+                            <option value="security"></option>
+                            <option value="cloud"></option>
+                            <option value="aws"></option>
+                            <option value="azure"></option>
+                            <option value="gcp"></option>
+                            <option value="data-centre"></option>
+                            <option value="collaboration"></option>
+                            <option value="automation"></option>
+                            <option value="devops"></option>
+                            <option value="programming"></option>
+                            <option value="data"></option>
+                            <option value="ai-ml"></option>
+                            <option value="project-management"></option>
+                            <option value="methodology"></option>
+                            <option value="agile"></option>
+                            <option value="leadership"></option>
+                            <option value="soft-skills"></option>
+                            <option value="vendor-specific"></option>
+                            <option value="compliance"></option>
+                            <option value="other"></option>
+                        </datalist>
+                        <small class="form-hint">Lower-case, words separated by hyphens — e.g. <code>ai-ml</code> or <code>data-centre</code>.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="trEditType">Type:</label>
+                        <select id="trEditType">
+                            <option value="certification">Certification</option>
+                            <option value="course">Course</option>
+                            <option value="training">Training</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="trEditDescription">Description:</label>
+                        <textarea id="trEditDescription" rows="3" placeholder="Optional"></textarea>
+                    </div>
+                    <div class="modal-actions modal-actions-bottom">
+                        <button class="btn-primary" id="trEditSaveBtn">Save</button>
+                        <button class="btn-secondary" onclick="closeTrainingEditModal()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assign / Edit Assignment Modal -->
+        <div id="trainingAssignModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="trainingAssignTitle">Assign Training</h3>
+                    <button class="modal-close" onclick="closeTrainingAssignModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="trAssignTraining">Training:</label>
+                        <select id="trAssignTraining"></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="trAssignStatus">Status:</label>
+                        <select id="trAssignStatus">
+                            <option value="planned">Planned</option>
+                            <option value="in-progress">In progress</option>
+                            <option value="achieved">Achieved</option>
+                            <option value="expired">Expired</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="trAssignTargetDate">Target date:</label>
+                        <input type="date" id="trAssignTargetDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="trAssignCompletedDate">Completed date:</label>
+                        <input type="date" id="trAssignCompletedDate">
+                    </div>
+                    <div class="form-group" id="trAssignExpiryRow">
+                        <label for="trAssignExpiryDate">Expires on:</label>
+                        <input type="date" id="trAssignExpiryDate">
+                        <small class="form-hint">Only relevant once the certification is achieved.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="trAssignNotes">Notes:</label>
+                        <textarea id="trAssignNotes" rows="3" placeholder="Optional"></textarea>
+                    </div>
+                    <div class="modal-actions modal-actions-bottom">
+                        <button class="btn-primary" id="trAssignSaveBtn">Save</button>
+                        <button class="btn-secondary" onclick="closeTrainingAssignModal()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Insights View -->
+        <section id="insights-view" class="view">
+            <h2>Team Insights</h2>
+            <p class="section-description">Auto-generated observations about your team's skill profile, risks and opportunities. All computed locally from the data you've entered — no external AI.</p>
+
+            <div class="insights-grid" id="insightsGrid">
+                <div class="insights-loading">Loading insights…</div>
+            </div>
+
+            <div class="insights-match">
+                <h3>Match a project to the team</h3>
+                <p class="section-description">Describe a project in plain English. The matcher extracts skills from the text and returns team members who best fit.</p>
+                <div class="match-input-row">
+                    <textarea id="matchSpec" rows="3" placeholder="e.g. We need someone to lead a Cisco SD-WAN deployment with Azure integration and stakeholder management."></textarea>
+                    <div class="match-buttons">
+                        <button class="btn-primary" id="matchSpecBtn">Find candidates</button>
+                        <button class="btn-secondary" id="matchSpecAiBtn" title="Use Claude to refine the analysis (requires API key in Settings)">
+                            <span aria-hidden="true">✨</span> Ask AI
+                        </button>
+                    </div>
+                </div>
+                <div id="matchOutput" class="match-output"></div>
+            </div>
+        </section>
+
+        <!-- Data Quality View -->
+        <section id="quality-view" class="view">
+            <h2>Data Quality</h2>
+            <p class="section-description">Resources, skills and ratings that probably need attention.</p>
+            <div class="quality-summary" id="qualitySummary"></div>
+            <div id="qualityDetail" class="quality-detail"></div>
+        </section>
+
         <!-- Data Management View -->
         <section id="management-view" class="view">
             <h2>Data Management</h2>
@@ -238,14 +559,41 @@
                     <h4 style="margin-bottom: 0.75rem;">Current Administrators</h4>
                     <div id="adminUsersList"></div>
                 </div>
+
+                <!-- API Keys -->
+                <div class="management-card">
+                    <h3>AI / API Keys</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.25rem;">Configure third-party AI providers used by the Insights project matcher. Keys are stored in the database and can be revoked at any time.</p>
+
+                    <div class="apikey-row" data-key="anthropic_api_key">
+                        <div class="apikey-head">
+                            <div>
+                                <strong>Anthropic Claude</strong>
+                                <span class="apikey-status" id="anthropicStatus">checking…</span>
+                            </div>
+                            <button class="btn-danger btn-sm" id="anthropicRevokeBtn" hidden>Revoke</button>
+                        </div>
+                        <div class="form-group">
+                            <label for="anthropicKeyInput">API Key:</label>
+                            <input type="password" id="anthropicKeyInput" placeholder="sk-ant-..." autocomplete="off">
+                        </div>
+                        <button type="button" class="btn-primary" id="anthropicSaveBtn">Save</button>
+                    </div>
+                </div>
             </div>
 
             <div class="data-actions">
                 <h3>Data Import/Export</h3>
                 <button type="button" id="exportData" class="btn-primary">Export Data (JSON)</button>
+                <button type="button" id="exportCsv" class="btn-secondary">Export Data (CSV)</button>
                 <button type="button" id="importData" class="btn-secondary">Import Data (JSON)</button>
                 <input type="file" id="importFile" accept=".json" style="display:none;">
                 <button type="button" id="resetData" class="btn-danger">Reset to Sample Data</button>
+                <p class="hint" style="margin-top:1rem; color: var(--text-secondary); font-size: 0.85rem;">
+                    To re-import from the source Excel, run
+                    <code>python import-from-excel.py</code> in the project root.
+                    See <code>README.md</code> for details.
+                </p>
             </div>
         </section>
 
@@ -293,12 +641,24 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="modalResourceEmail">Email/Username:</label>
-                    <input type="text" id="modalResourceEmail" placeholder="Email or username">
+                    <label for="modalResourceEmail">Username:</label>
+                    <input type="text" id="modalResourceEmail" placeholder="firstname.lastname">
                 </div>
                 <div class="form-group">
                     <label for="modalResourcePassword">Password:</label>
                     <input type="password" id="modalResourcePassword" placeholder="Password">
+                </div>
+                <div class="form-group">
+                    <label for="modalResourceJobRole">Job role:</label>
+                    <select id="modalResourceJobRole">
+                        <option value="">— Select role —</option>
+                        <option value="Consultant Engineer">Consultant Engineer</option>
+                        <option value="Technical Lead">Technical Lead</option>
+                        <option value="Senior Technical Consultant">Senior Technical Consultant</option>
+                        <option value="Project Coordinator">Project Coordinator</option>
+                        <option value="Project Manager">Project Manager</option>
+                        <option value="Senior Project Manager">Senior Project Manager</option>
+                    </select>
                 </div>
                 <hr>
                 <h4>Skills</h4>
@@ -419,12 +779,23 @@
                     <input type="text" id="newResourceName" placeholder="e.g., John Doe">
                 </div>
                 <div class="form-group">
-                    <label for="newResourceEmail">Email/Username:</label>
-                    <input type="text" id="newResourceEmail" placeholder="e.g., john.doe@company.com">
+                    <label for="newResourceEmail">Username:</label>
+                    <input type="text" id="newResourceEmail" placeholder="e.g., john.doe">
                 </div>
                 <div class="form-group">
                     <label for="newResourcePassword">Password:</label>
                     <input type="password" id="newResourcePassword" placeholder="Enter password">
+                </div>
+                <div class="form-group">
+                    <label for="newResourceJobRole">Job role:</label>
+                    <select id="newResourceJobRole">
+                        <option value="Consultant Engineer">Consultant Engineer</option>
+                        <option value="Technical Lead">Technical Lead</option>
+                        <option value="Senior Technical Consultant">Senior Technical Consultant</option>
+                        <option value="Project Coordinator">Project Coordinator</option>
+                        <option value="Project Manager">Project Manager</option>
+                        <option value="Senior Project Manager">Senior Project Manager</option>
+                    </select>
                 </div>
                 <button type="button" id="createResourceBtn" class="btn-primary">Create Resource</button>
             </div>
@@ -439,6 +810,6 @@
     </footer>
 
     <div id="toastContainer"></div>
-    <script src="script.js?v=80"></script>
+    <script src="script.js?v=113"></script>
 </body>
 </html>

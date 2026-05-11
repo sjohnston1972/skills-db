@@ -10,6 +10,12 @@ const dataRoutes = require('./routes/data');
 const resourcesRoutes = require('./routes/resources');
 const skillsRoutes = require('./routes/skills');
 const adminRoutes = require('./routes/admin');
+const staffingRoutes = require('./routes/staffing');
+const dataQualityRoutes = require('./routes/dataquality');
+const exportRoutes = require('./routes/export');
+const trainingsRoutes = require('./routes/trainings');
+const insightsRoutes = require('./routes/insights');
+const settingsRoutes = require('./routes/settings');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +36,12 @@ app.use('/api/data', dataRoutes);
 app.use('/api/resources', resourcesRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/staffing', staffingRoutes);
+app.use('/api/data-quality', dataQualityRoutes);
+app.use('/api/export', exportRoutes);
+app.use('/api/trainings', trainingsRoutes);
+app.use('/api/insights', insightsRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Metadata endpoint
 app.get('/api/metadata', async (req, res) => {
@@ -127,6 +139,31 @@ const startServer = async () => {
             // await db.initDatabase();
         } else {
             console.log('Database initialized. Tables:', tableCount, '/ 5');
+        }
+
+        // Apply additive migrations (safe to re-run). Note: the app user is
+        // not always the table owner, so ALTERs may fail. Migrations should
+        // be applied manually as the postgres superuser; this loop just
+        // surfaces what's outstanding.
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const migrationsDir = path.join(__dirname, 'migrations');
+            if (fs.existsSync(migrationsDir)) {
+                const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+                for (const f of files) {
+                    const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
+                    const statements = sql.split(';').map(s => s.trim()).filter(s => s && !s.startsWith('--'));
+                    try {
+                        for (const stmt of statements) await db.query(stmt);
+                        console.log(`Migration ${f}: ok (${statements.length} statements).`);
+                    } catch (e) {
+                        console.warn(`Migration ${f}: ${e.message} — run manually as 'postgres' if needed.`);
+                    }
+                }
+            }
+        } catch (mErr) {
+            console.error('Migration runner failed (non-fatal):', mErr.message);
         }
 
         // Start listening

@@ -36,6 +36,31 @@
 
 const API_BASE = '/api';
 
+// Staffing & Data Quality APIs (new — added in v3)
+const StaffingAPI = {
+    async search(requirements, mode = 'match') {
+        const r = await fetch(`${API_BASE}/staffing/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requirements, mode }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'staffing search failed');
+        return j.data;
+    }
+};
+
+const DataQualityAPI = {
+    async get(staleDays = 365) {
+        const r = await fetch(`${API_BASE}/data-quality?staleDays=${staleDays}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'data-quality fetch failed');
+        return j.data;
+    }
+};
+
 const API = {
     // Skills endpoints
     async getSkills() {
@@ -810,6 +835,21 @@ async function renderView(viewName) {
         case 'radar':
             await renderCustomRadar();
             break;
+        case 'staffing':
+            await renderStaffing();
+            break;
+        case 'compare':
+            await renderCompare();
+            break;
+        case 'quality':
+            await renderQuality();
+            break;
+        case 'training':
+            await renderTraining();
+            break;
+        case 'insights':
+            await renderInsights();
+            break;
         case 'management':
             await renderManagement();
             break;
@@ -838,8 +878,9 @@ async function navigateToSearch() {
 let customRadarInitialized = false;
 
 async function renderCustomRadar() {
+    // Always re-populate so newly added skills / sub-skills appear without a reload
+    await populateSubSkillCheckboxes();
     if (!customRadarInitialized) {
-        await populateSubSkillCheckboxes();
         setupCustomChartEventListeners();
         customRadarInitialized = true;
     }
@@ -856,6 +897,17 @@ async function navigateToRadar() {
 
 // Keep old name as alias for any lingering references
 function scrollToCustomRadar() { navigateToRadar(); }
+
+async function navigateToTraining() {
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    const btn = document.querySelector('[data-view="training"]');
+    if (btn) btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const view = document.getElementById('training-view');
+    if (view) view.classList.add('active');
+    await renderView('training');
+}
+window.navigateToTraining = navigateToTraining;
 
 // ==================== DASHBOARD ====================
 
@@ -880,6 +932,58 @@ async function renderDashboard() {
     document.getElementById('totalResources').textContent = totalResources;
     document.getElementById('totalSkills').textContent = totalSkills;
 
+    // Tech / Non-tech breakdowns
+    const techSkills = data.skills.filter(s => (s.skillType || 'technical') === 'technical');
+    const nonTechSkills = data.skills.filter(s => (s.skillType || 'technical') === 'non-technical');
+    const techSkillNames = new Set(techSkills.map(s => s.name));
+    const nonTechSkillNames = new Set(nonTechSkills.map(s => s.name));
+
+    // Skills tracked: count of sub-skills under each type
+    const techSubCount = techSkills.reduce((a, s) => a + (s.subSkills?.length || 0), 0);
+    const nonTechSubCount = nonTechSkills.reduce((a, s) => a + (s.subSkills?.length || 0), 0);
+    setText('totalSkillsTech', techSubCount);
+    setText('totalSkillsNonTech', nonTechSubCount);
+
+    // Resources: how many have at least one rating in each type
+    let resourcesWithTech = 0;
+    let resourcesWithNonTech = 0;
+    data.resources.forEach(r => {
+        const sub = r.subSkills || {};
+        let hasTech = false, hasNonTech = false;
+        for (const [mainName, items] of Object.entries(sub)) {
+            const anyRated = Object.values(items || {}).some(v => v > 0);
+            if (!anyRated) continue;
+            if (techSkillNames.has(mainName)) hasTech = true;
+            if (nonTechSkillNames.has(mainName)) hasNonTech = true;
+        }
+        if (hasTech) resourcesWithTech++;
+        if (hasNonTech) resourcesWithNonTech++;
+    });
+    setText('totalResourcesTech', resourcesWithTech);
+    setText('totalResourcesNonTech', resourcesWithNonTech);
+
+    // Empty-resource warning: count resources with no ratings at all
+    const unrated = data.resources.filter(r => {
+        if (!r.subSkills) return true;
+        return !Object.values(r.subSkills).some(cat => Object.keys(cat || {}).length > 0);
+    });
+    let warnEl = document.getElementById('unratedWarning');
+    if (!warnEl) {
+        warnEl = document.createElement('div');
+        warnEl.id = 'unratedWarning';
+        warnEl.className = 'dashboard-warn';
+        const view = document.getElementById('dashboard-view');
+        const grid = view && view.querySelector('.metrics-grid');
+        if (view && grid) view.insertBefore(warnEl, grid);
+    }
+    if (unrated.length > 0) {
+        warnEl.innerHTML = `<strong>Heads up:</strong> ${unrated.length} resource${unrated.length === 1 ? '' : 's'} have no skill ratings yet — they are excluded from averages but counted in <em>Total Resources</em>. ` +
+            `<span class="muted">(${unrated.map(r => r.name).slice(0, 5).join(', ')}${unrated.length > 5 ? ', …' : ''})</span>`;
+        warnEl.style.display = 'block';
+    } else {
+        warnEl.style.display = 'none';
+    }
+
     // Compute average team skill level (across all sub-skill ratings)
     let allRatings = [];
     data.resources.forEach(resource => {
@@ -896,6 +1000,27 @@ async function renderDashboard() {
         const avg = allRatings.length > 0 ? allRatings.reduce((a, b) => a + b, 0) / allRatings.length : 0;
         avgTeamSkillEl.textContent = avg > 0 ? avg.toFixed(1) : '—';
     }
+
+    // Avg by type
+    const collectRatings = (matchType) => {
+        const out = [];
+        data.resources.forEach(r => {
+            if (!r.subSkills) return;
+            Object.entries(r.subSkills).forEach(([mainName, items]) => {
+                const skill = data.skills.find(s => s.name === mainName);
+                const stype = skill && skill.skillType ? skill.skillType : 'technical';
+                if (stype !== matchType) return;
+                Object.values(items || {}).forEach(v => { if (v > 0) out.push(v); });
+            });
+        });
+        return out;
+    };
+    const techRatings = collectRatings('technical');
+    const nonTechRatings = collectRatings('non-technical');
+    const avgTech = techRatings.length ? techRatings.reduce((a, b) => a + b, 0) / techRatings.length : 0;
+    const avgNonTech = nonTechRatings.length ? nonTechRatings.reduce((a, b) => a + b, 0) / nonTechRatings.length : 0;
+    setText('avgTeamSkillTech',    avgTech    ? avgTech.toFixed(1)    : '—');
+    setText('avgTeamSkillNonTech', avgNonTech ? avgNonTech.toFixed(1) : '—');
 
     // Calculate average skill levels for each skill, separated by type
     const technicalSkillAverages = {};
@@ -921,128 +1046,169 @@ async function renderDashboard() {
         }
     });
 
-    // Render radar chart with both datasets
-    renderRadarChart(technicalSkillAverages, nonTechnicalSkillAverages);
+    // Stash both maps + data, then draw radar + lists for the currently-selected type
+    window._dashboardAverages = { technical: technicalSkillAverages, 'non-technical': nonTechnicalSkillAverages };
+    window._dashboardData = data;
+    drawTeamRadar();
+    renderDashboardTopGap();
+    setupDashboardToggle();
 
-    // Combine for top/bottom skills display
-    const allSkillAverages = { ...technicalSkillAverages, ...nonTechnicalSkillAverages };
+    // Training tile — quick read of training pipeline (best effort; doesn't block dashboard)
+    populateTrainingTile().catch(() => {});
 
-    // Render top/bottom skills
-    renderTopSkills(allSkillAverages);
-
-    // Top priority gap: skill with lowest non-zero average
-    const topGapSkillEl = document.getElementById('topGapSkill');
-    if (topGapSkillEl) {
-        const entries = Object.entries(allSkillAverages).filter(([, v]) => v > 0);
-        if (entries.length > 0) {
-            entries.sort(([, a], [, b]) => a - b);
-            const [gapName, gapVal] = entries[0];
-            topGapSkillEl.textContent = `${gapName} (${gapVal.toFixed(1)})`;
-        } else {
-            topGapSkillEl.textContent = '—';
-        }
-    }
-
-    // Render weighted gap analysis
-    renderWeightedGaps(data);
-}
-
-function renderRadarChart(technicalSkillAverages, nonTechnicalSkillAverages) {
-    const ctx = document.getElementById('teamRadarChart').getContext('2d');
-
-    // Get all unique skill names from both technical and non-technical
-    const allSkillNames = new Set([
-        ...Object.keys(technicalSkillAverages),
-        ...Object.keys(nonTechnicalSkillAverages)
-    ]);
-
-    // Filter out skills with 0 average in both categories
-    const labels = Array.from(allSkillNames).filter(skillName => {
-        const techAvg = technicalSkillAverages[skillName] || 0;
-        const nonTechAvg = nonTechnicalSkillAverages[skillName] || 0;
-        return techAvg > 0 || nonTechAvg > 0;
-    });
-
-    // Create data arrays for each dataset
-    const techData = labels.map(label => technicalSkillAverages[label] || 0);
-    const nonTechData = labels.map(label => nonTechnicalSkillAverages[label] || 0);
-
-    if (teamRadarChart) {
-        teamRadarChart.destroy();
-    }
-
-    teamRadarChart = window._teamRadarChart = new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Tech',
-                data: techData,
-                backgroundColor: 'rgba(37, 99, 235, 0.2)',
-                borderColor: 'rgba(37, 99, 235, 1)',
-                borderWidth: 2,
-                pointBackgroundColor: 'rgba(37, 99, 235, 1)',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: 'rgba(37, 99, 235, 1)'
-            }, {
-                label: 'Non-Tech',
-                data: nonTechData,
-                backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                borderColor: 'rgba(16, 185, 129, 1)',
-                borderWidth: 2,
-                pointBackgroundColor: 'rgba(16, 185, 129, 1)',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: 'rgba(16, 185, 129, 1)'
-            }]
-        },
-        options: {
-            scales: {
-                r: {
-                    beginAtZero: true,
-                    max: 5,
-                    ticks: {
-                        stepSize: 1
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                    onClick: (e, legendItem, legend) => {
-                        const index = legendItem.datasetIndex;
-                        const chart = legend.chart;
-                        const meta = chart.getDatasetMeta(index);
-
-                        // Toggle visibility
-                        meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
-                        chart.update();
-                    },
-                    labels: {
-                        generateLabels: (chart) => {
-                            const datasets = chart.data.datasets;
-                            return datasets.map((dataset, i) => ({
-                                text: dataset.label,
-                                fillStyle: dataset.backgroundColor,
-                                strokeStyle: dataset.borderColor,
-                                lineWidth: dataset.borderWidth,
-                                hidden: !chart.isDatasetVisible(i),
-                                datasetIndex: i
-                            }));
-                        }
-                    }
+    // Team Experts (L4+): count every (resource × sub-skill) rating at level 4 or 5.
+    let expertsTotal = 0, expertsTech = 0, expertsNonTech = 0;
+    data.resources.forEach(r => {
+        if (!r.subSkills) return;
+        for (const [mainName, items] of Object.entries(r.subSkills)) {
+            const skill = data.skills.find(s => s.name === mainName);
+            const stype = skill && skill.skillType ? skill.skillType : 'technical';
+            for (const lvl of Object.values(items || {})) {
+                if (lvl >= 4) {
+                    expertsTotal += 1;
+                    if (stype === 'non-technical') expertsNonTech += 1;
+                    else expertsTech += 1;
                 }
             }
         }
     });
+    setText('totalExperts',        expertsTotal);
+    setText('totalExpertsTech',    expertsTech);
+    setText('totalExpertsNonTech', expertsNonTech);
+
+    // Single Points of Failure: main skills where <= 1 person is rated L4+ at the
+    // main-skill level. Surfaces bus-factor risk across the catalogue.
+    let spofOne = 0;   // exactly one expert
+    let spofZero = 0;  // nobody at expert level
+    data.skills.forEach(skill => {
+        if (!skill.subSkills || skill.subSkills.length === 0) return; // skip orphan main skills
+        const expertCount = data.resources.filter(r => (r.skills && r.skills[skill.name] >= 4)).length;
+        if (expertCount === 0) spofZero += 1;
+        else if (expertCount === 1) spofOne += 1;
+    });
+    setText('spofValue', spofOne + spofZero);
+    setText('spofOne',   spofOne);
+    setText('spofZero',  spofZero);
 }
 
-function renderTopSkills(skillAverages) {
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function renderDashboardTopGap() {
+    const averages = (window._dashboardAverages || {})[dashboardSkillType] || {};
+    const data = window._dashboardData;
+    // Pass only the skills matching the selected type
+    const filteredData = data ? {
+        ...data,
+        skills: data.skills.filter(s => (s.skillType || 'technical') === dashboardSkillType),
+    } : null;
+    renderTopSkills(averages, filteredData);
+
+    // Section headers reflect the selected type for clarity
+    const strengthHeader = document.querySelector('.skills-column h3.strength');
+    const gapHeader = document.querySelector('.skills-column h3.gap');
+    const typeLabel = dashboardSkillType === 'technical' ? 'Technical' : 'Non-Technical';
+    if (strengthHeader) strengthHeader.textContent = `Top 5 ${typeLabel} Strengths`;
+    if (gapHeader) gapHeader.textContent = `Top 5 ${typeLabel} Gaps`;
+}
+
+let dashboardToggleBound = false;
+function setupDashboardToggle() {
+    if (dashboardToggleBound) return;
+    dashboardToggleBound = true;
+    document.querySelectorAll('.skill-type-toggle .stt-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const type = btn.dataset.skillType;
+            if (!type || type === dashboardSkillType) return;
+            dashboardSkillType = type;
+            document.querySelectorAll('.skill-type-toggle .stt-btn').forEach(b => {
+                b.classList.toggle('stt-active', b.dataset.skillType === type);
+            });
+            drawTeamRadar();
+            renderDashboardTopGap();
+        });
+    });
+}
+
+// Dashboard state: which skill type is shown in radar + top/gap lists
+let dashboardSkillType = 'technical';
+
+const RADAR_COLORS = {
+    technical:       { fill: 'rgba(37, 99, 235, 0.25)',  border: 'rgba(37, 99, 235, 1)' },
+    'non-technical': { fill: 'rgba(16, 185, 129, 0.25)', border: 'rgba(16, 185, 129, 1)' },
+};
+
+function renderRadarChart(technicalSkillAverages, nonTechnicalSkillAverages) {
+    // Hold both maps on window so the toggle handler can re-render without recomputing
+    window._dashboardAverages = { technical: technicalSkillAverages, 'non-technical': nonTechnicalSkillAverages };
+    drawTeamRadar();
+}
+
+function drawTeamRadar() {
+    const canvas = document.getElementById('teamRadarChart');
+    if (!canvas) return;
+    const averages = (window._dashboardAverages || {})[dashboardSkillType] || {};
+    const labels = Object.keys(averages).filter(k => (averages[k] || 0) > 0);
+    const data = labels.map(l => averages[l] || 0);
+    const colors = RADAR_COLORS[dashboardSkillType] || RADAR_COLORS.technical;
+
+    if (window._teamRadarChart) {
+        window._teamRadarChart.destroy();
+    }
+
+    if (labels.length === 0) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || '#888';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No data for this type yet', canvas.width / 2, canvas.height / 2);
+        window._teamRadarChart = null;
+        return;
+    }
+
+    window._teamRadarChart = new Chart(canvas.getContext('2d'), {
+        type: 'radar',
+        data: {
+            labels,
+            datasets: [{
+                label: dashboardSkillType === 'technical' ? 'Technical avg' : 'Non-Technical avg',
+                data,
+                backgroundColor: colors.fill,
+                borderColor: colors.border,
+                borderWidth: 2,
+                pointBackgroundColor: colors.border,
+                pointRadius: 3,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { r: { beginAtZero: true, max: 5, ticks: { stepSize: 1 } } },
+            plugins: { legend: { display: false } },
+        },
+    });
+}
+
+function renderTopSkills(skillAverages, data) {
     const sorted = Object.entries(skillAverages).sort((a, b) => b[1] - a[1]);
     const top5 = sorted.slice(0, 5);
-    const bottom5 = sorted.slice(-5).reverse();
+
+    // Use weighted gap score for gap list (matches Priority Skills Gap list)
+    const bottom5 = data
+        ? data.skills
+            .map(skill => {
+                const currentAvg = skillAverages[skill.name] || 0;
+                const gapScore = (5 - currentAvg) * (skill.weight || 5);
+                return { name: skill.name, avg: currentAvg, gapScore };
+            })
+            .filter(s => s.avg > 0)
+            .sort((a, b) => b.gapScore - a.gapScore)
+            .slice(0, 5)
+            .map(s => [s.name, s.avg])
+        : sorted.slice(-5).reverse();
 
     const topList = document.getElementById('topSkills');
     const gapList = document.getElementById('gapSkills');
@@ -1057,150 +1223,464 @@ function renderTopSkills(skillAverages) {
     gapList.innerHTML = bottom5.map(([skill, avg]) => `
         <li>
             <span>${skill}</span>
-            <span class="skill-score" style="background: var(--danger-color);">${avg.toFixed(1)}</span>
+            <span class="skill-score skill-score--gap">${avg.toFixed(1)}</span>
         </li>
     `).join('');
 }
 
-function renderWeightedGaps(data) {
-    const container = document.getElementById('weightedGaps');
-    if (!container) return;
 
-    // Calculate gap scores for all skills
-    const gapScores = data.skills.map(skill => {
-        // Calculate current average for this skill
-        let sum = 0;
-        let count = 0;
-        data.resources.forEach(resource => {
-            if (resource.skills[skill.name]) {
-                sum += resource.skills[skill.name];
-                count++;
-            }
+// ==================== HEATMAP ====================
+// State is module-level so toggles persist across re-renders
+const heatmapState = {
+    sortBy: 'name',          // 'name' | 'avgSkill'
+    mode: 'main',            // 'main' | 'sub'
+    filterType: 'technical', // 'all' | 'technical' | 'non-technical'
+    minLevel: 0,             // 0-5; cells below this are dimmed
+    hideUnrated: false,      // hide rows/cols with no ratings
+    editMode: false,
+};
+
+const STALE_DAYS = 365;
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function isStaleISO(iso) {
+    if (!iso) return false;
+    const days = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
+    return days > STALE_DAYS;
+}
+
+function avgOf(arr) {
+    const vals = arr.filter(v => typeof v === 'number');
+    if (vals.length === 0) return 0;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+function buildHeatmapModel(data) {
+    // Build a tidy model with main + sub columns, ready to render in either mode.
+    const mainCols = data.skills
+        .filter(s => heatmapState.filterType === 'all' ? true : s.skillType === heatmapState.filterType)
+        .map(s => ({
+            kind: 'main',
+            id: s.id,
+            name: s.name,
+            weight: s.weight || 5,
+            skillType: s.skillType || 'technical',
+            subSkills: (s.subSkills || []).map(ss => ({
+                kind: 'sub',
+                id: typeof ss === 'object' ? ss.id : null,
+                name: typeof ss === 'object' ? ss.name : ss,
+                mainSkillId: s.id,
+                mainSkillName: s.name,
+            })),
+        }));
+
+    const rows = data.resources.map(r => {
+        // Resolve a main-skill level from sub-skills (resource.skills is server-computed already)
+        const mainLevels = {};
+        const subLevels = {};
+        const subDates = {};
+        mainCols.forEach(c => {
+            mainLevels[c.name] = (r.skills && r.skills[c.name]) || 0;
+            const subs = (r.subSkills && r.subSkills[c.name]) || {};
+            const dates = (r.lastAssessed && r.lastAssessed[c.name]) || {};
+            c.subSkills.forEach(sc => {
+                subLevels[`${c.name}::${sc.name}`] = subs[sc.name] || 0;
+                subDates[`${c.name}::${sc.name}`] = dates[sc.name] || null;
+            });
         });
-        const currentAvg = count > 0 ? sum / count : 0;
-
-        // Gap Score = (Max Level - Current Avg) × Weight
-        const maxLevel = 5;
-        const gap = maxLevel - currentAvg;
-        const gapScore = gap * (skill.weight || 5);
-
         return {
-            name: skill.name,
-            currentAvg: currentAvg,
-            weight: skill.weight || 5,
-            gap: gap,
-            gapScore: gapScore,
-            skillType: skill.skillType || 'technical'
+            id: r.id,
+            name: r.name,
+            email: r.email,
+            mainLevels,
+            subLevels,
+            subDates,
         };
     });
 
-    // Sort by gap score descending and take top 10
-    const topGaps = gapScores
-        .sort((a, b) => b.gapScore - a.gapScore)
-        .slice(0, 10);
-
-    // Render the list
-    container.innerHTML = topGaps.map((item, index) => {
-        const priorityClass = item.gapScore > 30 ? 'critical' : item.gapScore > 20 ? 'high' : item.gapScore > 10 ? 'medium' : 'low';
-        const typeColor = item.skillType === 'non-technical' ? '#10b981' : '#2563eb';
-
-        return `
-            <li class="weighted-gap-item priority-${priorityClass}">
-                <div class="gap-rank">#${index + 1}</div>
-                <div class="gap-info">
-                    <div class="gap-name">
-                        <span style="color: ${typeColor}; font-weight: 600;">${item.name}</span>
-                        <span class="weight-badge" title="Demand/Priority Weight">W: ${item.weight}/10</span>
-                    </div>
-                    <div class="gap-details">
-                        <span>Current: ${item.currentAvg.toFixed(1)}/5</span>
-                        <span>Gap: ${item.gap.toFixed(1)}</span>
-                        <span class="gap-score-badge" title="Priority Score = Gap × Weight">${item.gapScore.toFixed(1)}</span>
-                    </div>
-                </div>
-            </li>
-        `;
-    }).join('');
+    return { mainCols, rows };
 }
 
-// ==================== HEATMAP ====================
-
-async function renderHeatmap(sortBy = 'name') {
-    const data = await getData();
-    const container = document.getElementById('heatmapContainer');
-
-    // Sort resources
-    let resources =[...data.resources];
-    if (sortBy === 'name') {
-        resources.sort((a, b) => a.name.localeCompare(b.name));
-    } else if (sortBy === 'avgSkill') {
-        resources.sort((a, b) => {
-            const avgA = Object.values(a.skills).reduce((sum, val) => sum + val, 0) / Object.keys(a.skills).length;
-            const avgB = Object.values(b.skills).reduce((sum, val) => sum + val, 0) / Object.keys(b.skills).length;
-            return avgB - avgA;
-        });
-    }
-
-    let html = '';
-
-    if (sortBy === 'name') {
-        // Traditional table with fixed columns (alphabetical)
-        const allSkills = data.skills.map(s => s.name);
-
-        html = '<table class="heatmap-table"><thead><tr>';
-        html += '<th>Resource</th>';
-        allSkills.forEach(skill => {
-            html += `<th>${skill}</th>`;
-        });
-        html += '</tr></thead><tbody>';
-
-        resources.forEach(resource => {
-            html += '<tr>';
-            html += `<td class="resource-name">${resource.name}</td>`;
-
-            allSkills.forEach(skill => {
-                const level = resource.skills[skill] || 0;
-                const tooltip = `${resource.name} - ${skill}: Level ${level}`;
-                html += `<td class="skill-cell level-${level}" title="${tooltip}">${level || '-'}</td>`;
-            });
-
-            html += '</tr>';
-        });
-
-        html += '</tbody></table>';
+function sortRows(rows, model) {
+    const out = [...rows];
+    if (heatmapState.sortBy === 'name') {
+        out.sort((a, b) => a.name.localeCompare(b.name));
     } else {
-        // Flexible layout: each resource shows their skills sorted by their own levels
-        html = '<table class="heatmap-table heatmap-flexible"><thead><tr>';
-        html += '<th>Resource</th>';
-        html += '<th colspan="100">Skills (sorted by proficiency, highest first)</th>';
-        html += '</tr></thead><tbody>';
-
-        resources.forEach(resource => {
-            // Sort this resource's skills by their level (descending)
-            const resourceSkills = Object.entries(resource.skills)
-                .filter(([skill, level]) => level > 0)
-                .sort((a, b) => b[1] - a[1]); // Sort by level descending
-
-            html += '<tr>';
-            html += `<td class="resource-name">${resource.name}</td>`;
-
-            // Display skills in order of this resource's proficiency
-            resourceSkills.forEach(([skill, level]) => {
-                const tooltip = `${resource.name} - ${skill}: Level ${level}`;
-                html += `<td class="skill-cell level-${level}" title="${tooltip}">${skill}: ${level}</td>`;
-            });
-
-            html += '</tr>';
+        out.sort((a, b) => {
+            const aa = avgOf(Object.values(a.mainLevels).filter(v => v > 0));
+            const bb = avgOf(Object.values(b.mainLevels).filter(v => v > 0));
+            return bb - aa;
         });
-
-        html += '</tbody></table>';
     }
+    return out;
+}
+
+function renderHeatmapMain(model, container) {
+    const rows = sortRows(model.rows, model);
+    const cols = model.mainCols;
+
+    // Filter rows/cols if "hide unrated" is on
+    let visibleCols = cols;
+    let visibleRows = rows;
+    if (heatmapState.hideUnrated) {
+        visibleCols = cols.filter(c => rows.some(r => r.mainLevels[c.name] > 0));
+        visibleRows = rows.filter(r => visibleCols.some(c => r.mainLevels[c.name] > 0));
+    }
+    if (heatmapState.minLevel > 0) {
+        visibleRows = visibleRows.filter(r =>
+            visibleCols.some(c => r.mainLevels[c.name] >= heatmapState.minLevel)
+        );
+    }
+
+    // Footer stats per column. "Demand" only computed when there IS rating data
+    // (otherwise an unrated column would look like the highest priority — misleading).
+    const colStats = visibleCols.map(c => {
+        const vals = visibleRows.map(r => r.mainLevels[c.name]).filter(v => v > 0);
+        const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+        const expertCount = visibleRows.filter(r => r.mainLevels[c.name] >= 4).length;
+        const hasData = vals.length > 0;
+        const demand = hasData ? (5 - avg) * (c.weight || 5) : null;
+        return { avg, expertCount, hasData, demand };
+    });
+    const ratedStats = colStats.filter(s => s.hasData);
+    const maxDemand = ratedStats.length ? Math.max(1, ...ratedStats.map(s => s.demand)) : 1;
+
+    let html = `<table class="heatmap-table heatmap-v2"><thead><tr>`;
+    html += `<th class="sticky-col sticky-row">Resource</th>`;
+    visibleCols.forEach(c => {
+        html += `<th class="sticky-row" title="weight ${c.weight}, ${c.skillType}">${escapeHtml(c.name)}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+
+    visibleRows.forEach(r => {
+        html += `<tr>`;
+        html += `<td class="resource-name sticky-col">${escapeHtml(r.name)}</td>`;
+        visibleCols.forEach(c => {
+            const lvl = r.mainLevels[c.name] || 0;
+            const dim = (heatmapState.minLevel > 0 && lvl < heatmapState.minLevel) ? ' dim' : '';
+            // Compute "stale-ish": any sub-skill in this category is stale
+            const subDates = c.subSkills.map(sc => r.subDates[`${c.name}::${sc.name}`]).filter(Boolean);
+            const isStale = subDates.length > 0 && subDates.every(isStaleISO);
+            const staleDot = isStale ? '<span class="freshness-dot stale" title="all underlying ratings >365d"></span>' : '';
+            html += `<td class="skill-cell level-${lvl}${dim}"
+                data-resource-id="${r.id}" data-main-skill="${escapeHtml(c.name)}"
+                title="${escapeHtml(r.name)} — ${escapeHtml(c.name)}: ${lvl || 'none'}">
+                ${staleDot}${lvl || '-'}
+            </td>`;
+        });
+        html += `</tr>`;
+    });
+    html += `</tbody>`;
+
+    // Footer with team stats per column
+    html += `<tfoot><tr>`;
+    html += `<th class="sticky-col">Team avg</th>`;
+    colStats.forEach(s => {
+        html += `<th class="hm-foot-cell"><div class="hm-foot-avg">${s.hasData ? s.avg.toFixed(1) : '—'}</div>`;
+        html += `<div class="hm-foot-expert">${s.expertCount}× L4+</div>`;
+        if (s.hasData) {
+            const pct = Math.max(4, Math.round((s.demand / maxDemand) * 100));
+            const maskPct = Math.max(0, 100 - pct);
+            html += `<div class="hm-demand-bar" title="Priority bar. Wider/redder = larger demand. score = (5−avg) × weight = ${s.demand.toFixed(1)}">
+                <span class="hm-demand-mask" style="width:${maskPct}%"></span></div>`;
+        } else {
+            html += `<div class="hm-demand-bar no-data" title="No ratings yet — no demand signal."></div>`;
+        }
+        html += `</th>`;
+    });
+    html += `</tr></tfoot>`;
+    html += `</table>`;
 
     container.innerHTML = html;
+}
 
-    // Setup sort buttons
+function renderHeatmapSub(model, container) {
+    const rows = sortRows(model.rows, model);
+    let cols = [];
+    model.mainCols.forEach(c => c.subSkills.forEach(sc => cols.push({ main: c, sub: sc })));
+
+    // Filter
+    if (heatmapState.hideUnrated) {
+        cols = cols.filter(({ main, sub }) =>
+            rows.some(r => (r.subLevels[`${main.name}::${sub.name}`] || 0) > 0)
+        );
+    }
+    if (heatmapState.minLevel > 0) {
+        cols = cols.filter(({ main, sub }) =>
+            rows.some(r => (r.subLevels[`${main.name}::${sub.name}`] || 0) >= heatmapState.minLevel)
+        );
+    }
+
+    let visibleRows = rows;
+    if (heatmapState.hideUnrated) {
+        visibleRows = rows.filter(r =>
+            cols.some(({ main, sub }) => (r.subLevels[`${main.name}::${sub.name}`] || 0) > 0)
+        );
+    }
+
+    let html = `<table class="heatmap-table heatmap-v2 heatmap-sub"><thead>`;
+    // Main-skill group header row
+    html += `<tr><th class="sticky-col sticky-row" rowspan="2">Resource</th>`;
+    let groupHtml = '';
+    let cursor = 0;
+    while (cursor < cols.length) {
+        const groupName = cols[cursor].main.name;
+        let span = 0;
+        while (cursor + span < cols.length && cols[cursor + span].main.name === groupName) span++;
+        groupHtml += `<th class="hm-group sticky-row" colspan="${span}">${escapeHtml(groupName)}</th>`;
+        cursor += span;
+    }
+    html += groupHtml + `</tr><tr>`;
+    cols.forEach(({ sub }) => {
+        html += `<th class="hm-sub-th sticky-row" title="${escapeHtml(sub.name)}">${escapeHtml(sub.name)}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+
+    visibleRows.forEach(r => {
+        html += `<tr><td class="resource-name sticky-col">${escapeHtml(r.name)}</td>`;
+        cols.forEach(({ main, sub }) => {
+            const key = `${main.name}::${sub.name}`;
+            const lvl = r.subLevels[key] || 0;
+            const dim = (heatmapState.minLevel > 0 && lvl < heatmapState.minLevel) ? ' dim' : '';
+            const date = r.subDates[key];
+            const stale = isStaleISO(date);
+            const dot = stale ? '<span class="freshness-dot stale" title="rating >365d old"></span>' : '';
+            html += `<td class="skill-cell level-${lvl}${dim}"
+                data-resource-id="${r.id}" data-main-skill="${escapeHtml(main.name)}" data-sub-skill="${escapeHtml(sub.name)}"
+                title="${escapeHtml(r.name)} — ${escapeHtml(main.name)} :: ${escapeHtml(sub.name)}: ${lvl || 'none'}${date ? ' (' + new Date(date).toLocaleDateString() + ')' : ''}">
+                ${dot}${lvl || '-'}
+            </td>`;
+        });
+        html += `</tr>`;
+    });
+    html += `</tbody>`;
+
+    // Footer
+    const colStats = cols.map(({ main, sub }) => {
+        const vals = visibleRows
+            .map(r => r.subLevels[`${main.name}::${sub.name}`] || 0)
+            .filter(v => v > 0);
+        const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+        const expertCount = visibleRows.filter(
+            r => (r.subLevels[`${main.name}::${sub.name}`] || 0) >= 4
+        ).length;
+        return { avg, expertCount };
+    });
+    html += `<tfoot><tr><th class="sticky-col">Team avg</th>`;
+    colStats.forEach(s => {
+        html += `<th class="hm-foot-cell"><div class="hm-foot-avg">${s.avg ? s.avg.toFixed(1) : '—'}</div>`;
+        html += `<div class="hm-foot-expert">${s.expertCount}× L4+</div></th>`;
+    });
+    html += `</tr></tfoot></table>`;
+
+    container.innerHTML = html;
+}
+
+async function renderHeatmap(sortBy) {
+    if (sortBy) heatmapState.sortBy = sortBy;
+    const data = await getData();
+    const container = document.getElementById('heatmapContainer');
+    if (!container) return;
+
+    const model = buildHeatmapModel(data);
+    if (heatmapState.mode === 'sub') {
+        renderHeatmapSub(model, container);
+    } else {
+        renderHeatmapMain(model, container);
+    }
+
+    bindHeatmapInteractions(container, model);
+    syncHeatmapControls();
+}
+
+function syncHeatmapControls() {
+    const set = (id, active) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('stt-active', !!active);
+    };
+    set('sortByName', heatmapState.sortBy === 'name');
+    set('sortByAvgSkill', heatmapState.sortBy === 'avgSkill');
+    set('hmModeMain', heatmapState.mode === 'main');
+    set('hmModeSub', heatmapState.mode === 'sub');
+    const editEl = document.getElementById('hmEditMode');
+    if (editEl) editEl.checked = heatmapState.editMode;
+    const unratedEl = document.getElementById('hmHideUnrated');
+    if (unratedEl) unratedEl.checked = heatmapState.hideUnrated;
+    document.querySelectorAll('#hmTypeToggle .stt-btn').forEach(b => {
+        b.classList.toggle('stt-active', b.dataset.skillType === heatmapState.filterType);
+    });
+    const ml = document.getElementById('hmFilterMinLevel');
+    if (ml) ml.value = String(heatmapState.minLevel);
+    // toggle edit-mode visual on the heatmap
+    document.getElementById('heatmapContainer').classList.toggle('edit-mode', heatmapState.editMode);
+}
+
+let heatmapListenersBound = false;
+function bindHeatmapInteractions(container, model) {
+    // Cell click → popover (or inline edit in edit mode + sub view)
+    container.querySelectorAll('td.skill-cell').forEach(cell => {
+        cell.addEventListener('click', e => onHeatmapCellClick(e, model));
+    });
+
+    if (heatmapListenersBound) return;
+    heatmapListenersBound = true;
+
     document.getElementById('sortByName').addEventListener('click', () => renderHeatmap('name'));
     document.getElementById('sortByAvgSkill').addEventListener('click', () => renderHeatmap('avgSkill'));
+    document.getElementById('hmModeMain').addEventListener('click', () => {
+        heatmapState.mode = 'main'; renderHeatmap();
+    });
+    document.getElementById('hmModeSub').addEventListener('click', () => {
+        heatmapState.mode = 'sub'; renderHeatmap();
+    });
+    document.querySelectorAll('#hmTypeToggle .stt-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const t = btn.dataset.skillType;
+            if (t === heatmapState.filterType) return;
+            heatmapState.filterType = t;
+            document.querySelectorAll('#hmTypeToggle .stt-btn').forEach(b => {
+                b.classList.toggle('stt-active', b.dataset.skillType === t);
+            });
+            renderHeatmap();
+        });
+    });
+    document.getElementById('hmFilterMinLevel').addEventListener('change', e => {
+        heatmapState.minLevel = parseInt(e.target.value, 10) || 0; renderHeatmap();
+    });
+    document.getElementById('hmHideUnrated').addEventListener('change', e => {
+        heatmapState.hideUnrated = e.target.checked; renderHeatmap();
+    });
+    document.getElementById('hmEditMode').addEventListener('change', e => {
+        heatmapState.editMode = e.target.checked;
+        document.getElementById('heatmapContainer').classList.toggle('edit-mode', heatmapState.editMode);
+    });
+    // Legend hover: highlight all cells at that level
+    document.querySelectorAll('.heatmap-legend .legend-item[data-level]').forEach(item => {
+        item.addEventListener('mouseenter', () => {
+            const lvl = item.dataset.level;
+            document.getElementById('heatmapContainer').classList.add('hl-active');
+            document.querySelectorAll('#heatmapContainer td.skill-cell').forEach(c => {
+                c.classList.toggle('hl', c.classList.contains(`level-${lvl}`));
+            });
+        });
+        item.addEventListener('mouseleave', () => {
+            document.getElementById('heatmapContainer').classList.remove('hl-active');
+            document.querySelectorAll('#heatmapContainer td.skill-cell.hl').forEach(c => c.classList.remove('hl'));
+        });
+    });
+    // Popover close
+    document.getElementById('hmPopoverClose').addEventListener('click', closeHeatmapPopover);
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeHeatmapPopover();
+    });
+}
+
+function onHeatmapCellClick(e, model) {
+    const cell = e.currentTarget;
+    const resourceId = cell.dataset.resourceId;
+    const mainSkill = cell.dataset.mainSkill;
+    const subSkill = cell.dataset.subSkill || null;
+    const row = model.rows.find(r => r.id === resourceId);
+    const mainCol = model.mainCols.find(c => c.name === mainSkill);
+    if (!row || !mainCol) return;
+    openHeatmapPopover(row, mainCol, subSkill);
+}
+
+function openHeatmapPopover(row, mainCol, focusSubName) {
+    const pop = document.getElementById('heatmapPopover');
+    document.getElementById('hmPopoverTitle').textContent =
+        `${row.name} — ${mainCol.name}`;
+    const body = document.getElementById('hmPopoverBody');
+
+    const subs = mainCol.subSkills;
+    const editMode = heatmapState.editMode;
+
+    let html = `<div class="hm-popover-meta">
+        <span>Weight: <strong>${mainCol.weight}</strong></span>
+        <span>Type: <strong>${mainCol.skillType}</strong></span>
+        <span>Computed main level:
+            <strong>${row.mainLevels[mainCol.name] || '—'}</strong></span>
+    </div>`;
+    html += `<table class="hm-popover-table"><thead><tr>
+        <th>Sub-skill</th><th>Level</th><th>Last assessed</th></tr></thead><tbody>`;
+    subs.forEach(sc => {
+        const key = `${mainCol.name}::${sc.name}`;
+        const lvl = row.subLevels[key] || 0;
+        const date = row.subDates[key];
+        const focused = (sc.name === focusSubName) ? ' hm-row-focused' : '';
+        const dateText = date
+            ? `${new Date(date).toLocaleDateString()}${isStaleISO(date) ? ' <span class="hm-pill-stale">stale</span>' : ''}`
+            : '—';
+
+        let levelCell;
+        if (editMode) {
+            levelCell = `<select class="hm-edit-level" data-sub="${escapeHtml(sc.name)}">`
+              + [0,1,2,3,4,5].map(n => `<option value="${n}" ${n === lvl ? 'selected' : ''}>${n}</option>`).join('')
+              + `</select>`;
+        } else {
+            levelCell = `<span class="skill-level-badge level-${lvl}">${lvl}</span>`;
+        }
+        html += `<tr class="${focused}"><td>${escapeHtml(sc.name)}</td><td>${levelCell}</td><td>${dateText}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+
+    if (editMode) {
+        html += `<div class="hm-popover-actions">
+            <button class="btn-primary" id="hmPopoverSave">Save</button>
+            <button class="btn-secondary" id="hmPopoverCancel">Cancel</button>
+        </div>`;
+    }
+
+    body.innerHTML = html;
+    pop.hidden = false;
+    pop.dataset.resourceId = row.id;
+    pop.dataset.mainSkill = mainCol.name;
+
+    if (editMode) {
+        document.getElementById('hmPopoverSave').addEventListener('click', () => savePopoverEdits(row, mainCol));
+        document.getElementById('hmPopoverCancel').addEventListener('click', closeHeatmapPopover);
+    }
+}
+
+async function savePopoverEdits(row, mainCol) {
+    // Gather all sub-skill levels for this main skill from the popover
+    const selects = document.querySelectorAll('#hmPopoverBody select.hm-edit-level');
+    // Build full subSkills object for the resource (preserving everything else)
+    const data = await getData();
+    const fullResource = data.resources.find(r => r.id === row.id);
+    const newSubSkills = JSON.parse(JSON.stringify(fullResource.subSkills || {}));
+    if (!newSubSkills[mainCol.name]) newSubSkills[mainCol.name] = {};
+    let changed = 0;
+    selects.forEach(sel => {
+        const subName = sel.dataset.sub;
+        const newLvl = parseInt(sel.value, 10);
+        const old = newSubSkills[mainCol.name][subName] || 0;
+        if (newLvl > 0) {
+            if (newSubSkills[mainCol.name][subName] !== newLvl) changed++;
+            newSubSkills[mainCol.name][subName] = newLvl;
+        } else {
+            if (old > 0) changed++;
+            delete newSubSkills[mainCol.name][subName];
+        }
+    });
+
+    try {
+        await API.updateResource(row.id, { subSkills: newSubSkills });
+        clearDataCache();
+        showToast(`${row.name} — ${mainCol.name}: ${changed} change${changed === 1 ? '' : 's'} saved`, 'success');
+        closeHeatmapPopover();
+        await renderHeatmap();
+    } catch (err) {
+        showToast(`Save failed: ${err.message}`, 'error');
+    }
+}
+
+function closeHeatmapPopover() {
+    const pop = document.getElementById('heatmapPopover');
+    if (pop) pop.hidden = true;
 }
 
 // ==================== SEARCH ====================
@@ -1217,17 +1697,17 @@ async function renderSearch() {
 
     // Only add event listeners once
     if (!resourcesEventListenersAdded) {
-        // Search input listener
-        searchInput.addEventListener('input', async (e) => {
+        // Search input listener (debounced)
+        const onSearchInput = debounce(async (val) => {
             const currentData = await getData();
-            const query = e.target.value.toLowerCase();
+            const query = (val || '').toLowerCase();
             const filtered = currentData.resources.filter(eng =>
                 eng.name.toLowerCase().includes(query) ||
-                (eng.email && eng.email.toLowerCase().includes(query)) ||
                 (eng.email && eng.email.toLowerCase().includes(query))
             );
             displaySearchResults(filtered);
-        });
+        }, 150);
+        searchInput.addEventListener('input', (e) => onSearchInput(e.target.value));
 
         // Event delegation for all button clicks
         resultsContainer.addEventListener('click', async (e) => {
@@ -1255,13 +1735,36 @@ async function renderSearch() {
     }
 }
 
-function displaySearchResults(resources) {
+async function displaySearchResults(resources) {
     const resultsContainer = document.getElementById('searchResults');
 
     if (resources.length === 0) {
         resultsContainer.innerHTML = '<p>No resources found.</p>';
         return;
     }
+
+    // Build skill-name → weight lookup so chip importance can be weight-aware
+    const data = await getData();
+    const skillWeightByName = {};
+    (data.skills || []).forEach(s => { skillWeightByName[s.name] = s.weight || 5; });
+
+    // SPOF map: for each main skill, which resource IDs are rated L4+?
+    // If exactly one, that resource is a sole-expert for that skill.
+    const expertsBySkill = new Map();
+    (data.skills || []).forEach(skill => {
+        const ids = (data.resources || [])
+            .filter(r => r.skills && r.skills[skill.name] >= 4)
+            .map(r => r.id);
+        expertsBySkill.set(skill.name, ids);
+    });
+    const soleExpertSkillsByResource = new Map();
+    expertsBySkill.forEach((ids, skillName) => {
+        if (ids.length === 1) {
+            const rid = ids[0];
+            if (!soleExpertSkillsByResource.has(rid)) soleExpertSkillsByResource.set(rid, []);
+            soleExpertSkillsByResource.get(rid).push(skillName);
+        }
+    });
 
     resultsContainer.innerHTML = resources.map(eng => {
         // Count sub-skills instead of main skills
@@ -1279,13 +1782,46 @@ function displaySearchResults(resources) {
             console.log('Resource missing email:', eng.id, eng.name, 'Fields:', Object.keys(eng));
         }
 
-        const displayEmail = eng.email || 'No email/username';
+        const displayEmail = eng.email || '(no username)';
+        // Top main skills: Proficient+ only (≥3), sorted by importance = level × weight.
+        // Reason: level 1-2 isn't a real "strength"; the weight factor surfaces
+        // high-demand skills above niche-but-cheap ones at the same level.
+        const candidateSkills = Object.entries(eng.skills || {})
+            .filter(([, lvl]) => lvl >= 3)
+            .map(([name, lvl]) => ({ name, lvl, importance: lvl * (skillWeightByName[name] || 5) }))
+            .sort((a, b) => b.importance - a.importance);
+        const topSkills = candidateSkills.slice(0, 4);
+        const moreCount = Math.max(0, candidateSkills.length - topSkills.length);
+
+        let chipsHtml;
+        if (topSkills.length > 0) {
+            chipsHtml = `<div class="resource-skill-chips">${topSkills.map(s => `
+                  <span class="skill-chip level-${s.lvl}" title="${s.name}: level ${s.lvl}">
+                    <span class="chip-name">${s.name}</span>
+                    <span class="chip-level">${s.lvl}</span>
+                  </span>`).join('')}${moreCount > 0 ? `<span class="skill-chip skill-chip--more" title="${moreCount} more proficient-level skills">+${moreCount}</span>` : ''}</div>`;
+        } else {
+            chipsHtml = '<p class="resource-no-skills">No skills at proficient level yet</p>';
+        }
+
+        const soleExpertSkills = soleExpertSkillsByResource.get(eng.id) || [];
+        const spofBadge = soleExpertSkills.length > 0
+            ? `<div class="resource-spof-badge" title="${escapeHtml(eng.name)} is the only team member rated L4+ in: ${soleExpertSkills.map(escapeHtml).join(', ')}">
+                  <span class="spof-icon" aria-hidden="true">⚠</span>
+                  <span class="spof-label">Sole expert:</span>
+                  <span class="spof-skills">${soleExpertSkills.map(s => `<span class="spof-skill">${escapeHtml(s)}</span>`).join('')}</span>
+               </div>`
+            : '';
+
         return `
-            <div class="resource-card" data-resource-id="${eng.id}" style="position: relative;">
+            <div class="resource-card${soleExpertSkills.length > 0 ? ' is-spof' : ''}" data-resource-id="${eng.id}" style="position: relative;">
                 <button class="delete-resource-btn" data-resource-id="${eng.id}" data-resource-name="${safeName}">×</button>
                 <h4>${eng.name}</h4>
-                <p style="color: var(--text-light); font-size: 0.9rem;"><strong>Email/Username:</strong> ${displayEmail}</p>
+                ${eng.job_role ? `<div class="resource-role">${escapeHtml(eng.job_role)}</div>` : ''}
+                <p style="color: var(--text-light); font-size: 0.9rem;"><strong>Username:</strong> ${displayEmail}</p>
                 <p><strong>${subSkillCount}</strong> skills</p>
+                ${spofBadge}
+                ${chipsHtml}
                 <div class="resource-card-actions">
                     <button class="btn-view" data-resource-id="${eng.id}">View</button>
                     <button class="btn-edit" data-resource-id="${eng.id}">Edit</button>
@@ -1381,70 +1917,76 @@ function displaySearchResults(resources) {
     });
 }
 
-function showResourceTooltip(cardElement, resource) {
-    // Check if element still exists
+async function showResourceTooltip(cardElement, resource) {
     if (!cardElement || !resource) return;
-
-    // Remove any existing tooltip
     hideResourceTooltip();
 
-    // Get all sub-skills
-    const allSubSkills = [];
+    // Need main-skill weights so we can rank by importance (level × weight)
+    const data = await getData();
+    const weightByMain = {};
+    (data.skills || []).forEach(s => { weightByMain[s.name] = s.weight || 5; });
+
+    // Flatten sub-skill ratings with their parent main-skill weight
+    const all = [];
     if (resource.subSkills) {
-        Object.entries(resource.subSkills).forEach(([category, skills]) => {
-            Object.entries(skills).forEach(([skillName, level]) => {
-                allSubSkills.push({ name: skillName, level: level });
-            });
-        });
+        for (const [mainName, subs] of Object.entries(resource.subSkills)) {
+            const w = weightByMain[mainName] || 5;
+            for (const [name, level] of Object.entries(subs || {})) {
+                if (level > 0) all.push({ name, level, mainName, weight: w });
+            }
+        }
     }
 
-    // Sort by level descending
-    const sortedSkills = allSubSkills.sort((a, b) => b.level - a.level);
+    // "Top skills" — proficient+ only (≥3), sorted by importance = level × weight.
+    // (Matches the resource-card chip rule, so the tooltip never disagrees with
+    // what the card itself is showing.)
+    const topSubSkills = all
+        .filter(s => s.level >= 3)
+        .sort((a, b) => (b.level * b.weight) - (a.level * a.weight))
+        .slice(0, 10);
 
-    // Get top 10 skills
-    const top10Skills = sortedSkills.filter(s => s.level > 0).slice(0, 10);
+    // "Areas to develop" — L1-2 only, lowest first. Renamed from "gaps" so it
+    // doesn't collide with the dashboard's team-level priority-gap concept.
+    const developing = all
+        .filter(s => s.level >= 1 && s.level <= 2)
+        .sort((a, b) => a.level - b.level)
+        .slice(0, 5);
 
-    // Get skills gaps (level 1-2) and missing skills (level 0)
-    const gapSkills = sortedSkills.filter(s => s.level > 0 && s.level <= 2).slice(0, 5);
+    // If there's literally nothing to say, don't pop the tooltip.
+    if (topSubSkills.length === 0 && developing.length === 0) return;
 
-    if (top10Skills.length === 0 && gapSkills.length === 0) {
-        return; // No skills to show
-    }
-
-    // Create tooltip
     const tooltip = document.createElement('div');
     tooltip.className = 'resource-tooltip show';
     tooltip.id = 'active-resource-tooltip';
 
     let tooltipHTML = '';
 
-    // Top skills section
-    if (top10Skills.length > 0) {
-        tooltipHTML += '<h5>Top 10 Skills</h5><ul>';
-        top10Skills.forEach(skill => {
+    tooltipHTML += '<h5>Top skills (proficient+)</h5>';
+    if (topSubSkills.length > 0) {
+        tooltipHTML += '<ul>';
+        topSubSkills.forEach(s => {
             tooltipHTML += `
                 <li>
-                    <span class="skill-name">${skill.name}</span>
-                    <span class="skill-level">Level ${skill.level}</span>
-                </li>
-            `;
+                    <span class="skill-name">${escapeHtml(s.name)}<br><small style="color: var(--text-secondary); font-size: 0.7rem;">${escapeHtml(s.mainName)}</small></span>
+                    <span class="skill-level">L${s.level}</span>
+                </li>`;
         });
         tooltipHTML += '</ul>';
+    } else {
+        tooltipHTML += '<p class="tooltip-empty">No proficient-level skills yet.</p>';
     }
 
-    // Skills gaps section
-    if (gapSkills.length > 0) {
+    if (developing.length > 0) {
         tooltipHTML += '<div class="section-divider"></div>';
-        tooltipHTML += '<div class="gaps-section"><h5>Skills Gaps (Low Proficiency)</h5><ul>';
-        gapSkills.forEach(skill => {
+        tooltipHTML += '<h5>Areas to develop</h5><ul>';
+        developing.forEach(s => {
             tooltipHTML += `
                 <li>
-                    <span class="skill-name">${skill.name}</span>
-                    <span class="skill-level" style="background: rgba(248, 113, 113, 0.3);">Level ${skill.level}</span>
-                </li>
-            `;
+                    <span class="skill-name">${escapeHtml(s.name)}<br><small style="color: var(--text-secondary); font-size: 0.7rem;">${escapeHtml(s.mainName)}</small></span>
+                    <span class="skill-level" style="background: rgba(248, 113, 113, 0.3);">L${s.level}</span>
+                </li>`;
         });
-        tooltipHTML += '</ul></div>';
+        tooltipHTML += '</ul>';
     }
 
     tooltip.innerHTML = tooltipHTML;
@@ -1501,6 +2043,55 @@ async function showResourceProfile(resourceId) {
         });
     }
 
+    // Build per-category tabs (skills + their sub-skills with last-assessed staleness)
+    const STALE_DAYS = 365;
+    const now = Date.now();
+    const categories = Object.keys(resource.subSkills || {}).sort();
+    const lastAssessed = resource.lastAssessed || {};
+
+    function staleHint(iso) {
+        if (!iso) return '';
+        const days = Math.floor((now - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
+        const stale = days > STALE_DAYS;
+        return `<small class="last-assessed ${stale ? 'stale' : ''}" title="Last assessed ${iso}">${days}d ago${stale ? ' • stale' : ''}</small>`;
+    }
+
+    let tabsHtml = `<div class="profile-tabs"><button class="profile-tab active" data-tab="__summary">Summary</button>`;
+    categories.forEach(cat => {
+        tabsHtml += `<button class="profile-tab" data-tab="${cat.replace(/"/g, '&quot;')}">${cat}</button>`;
+    });
+    tabsHtml += '</div>';
+
+    let panelsHtml = `<div class="profile-tab-panel active" data-panel="__summary">
+        <h4>Skills (${subSkillCount} total)</h4>
+        <div class="skills-list">
+          ${Object.entries(resource.skills).sort((a, b) => b[1] - a[1]).map(([s, lvl]) => `
+            <div class="skill-item">
+              <span>${s}</span>
+              <span class="skill-level-badge level-${lvl}" style="background-color: var(--level-${lvl}); color: ${lvl >= 5 ? 'white' : '#1e293b'};">Level ${lvl}</span>
+            </div>`).join('')}
+        </div>
+        ${missingSkills.length > 0 ? `
+          <h4 style="margin-top: 2rem; color: var(--danger-color);">Skills Gaps (${missingSkills.length})</h4>
+          <div class="skills-list">
+            ${missingSkills.map(s => `<div class="skill-item"><span>${s}</span><span style="color: var(--secondary-color);">Not acquired</span></div>`).join('')}
+          </div>` : ''}
+    </div>`;
+    categories.forEach(cat => {
+        const items = resource.subSkills[cat] || {};
+        const datesForCat = lastAssessed[cat] || {};
+        panelsHtml += `<div class="profile-tab-panel" data-panel="${cat.replace(/"/g, '&quot;')}">
+          <h4>${cat}</h4>
+          <div class="skills-list">
+            ${Object.entries(items).sort((a, b) => b[1] - a[1]).map(([sub, lvl]) => `
+              <div class="skill-item">
+                <span>${sub} ${staleHint(datesForCat[sub])}</span>
+                <span class="skill-level-badge level-${lvl}" style="background-color: var(--level-${lvl}); color: ${lvl >= 5 ? 'white' : '#1e293b'};">Level ${lvl}</span>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    });
+
     let html = `
         <div class="profile-header">
             <h3>${resource.name}</h3>
@@ -1511,35 +2102,24 @@ async function showResourceProfile(resourceId) {
             <canvas id="resourceRadarChart"></canvas>
         </div>
 
-        <h4>Skills (${subSkillCount} total)</h4>
-        <div class="skills-list">
+        ${tabsHtml}
+        ${panelsHtml}
     `;
-
-    Object.entries(resource.skills).sort((a, b) => b[1] - a[1]).forEach(([skill, level]) => {
-        html += `
-            <div class="skill-item">
-                <span>${skill}</span>
-                <span class="skill-level-badge level-${level}" style="background-color: var(--level-${level}); color: ${level >= 5 ? 'white' : '#1e293b'};">
-                    Level ${level}
-                </span>
-            </div>
-        `;
-    });
-
-    html += '</div>';
-
-    if (missingSkills.length > 0) {
-        html += `<h4 style="margin-top: 2rem; color: var(--danger-color);">Skills Gaps (${missingSkills.length})</h4>`;
-        html += '<div class="skills-list">';
-        missingSkills.forEach(skill => {
-            html += `<div class="skill-item"><span>${skill}</span><span style="color: var(--secondary-color);">Not acquired</span></div>`;
-        });
-        html += '</div>';
-    }
 
     // Display in modal instead of inline
     const modalContent = document.getElementById('modalProfileContent');
     modalContent.innerHTML = html;
+
+    // Wire tab clicks
+    modalContent.querySelectorAll('.profile-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            modalContent.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b === btn));
+            modalContent.querySelectorAll('.profile-tab-panel').forEach(p => {
+                p.classList.toggle('active', p.dataset.panel === tab);
+            });
+        });
+    });
 
     // Show modal
     const modal = document.getElementById('profileModal');
@@ -1547,7 +2127,6 @@ async function showResourceProfile(resourceId) {
     document.body.style.overflow = 'hidden'; // Prevent background scrolling
 
     // Render individual radar chart
-    // Use setTimeout to ensure canvas is rendered
     setTimeout(() => {
         renderResourceRadar(resource, allSkills);
     }, 100);
@@ -2047,7 +2626,7 @@ function openAddResourceModal() {
         }
 
         if (!email) {
-            showToast('Please enter an email/username', 'error');
+            showToast('Please enter a username', 'error');
             return;
         }
 
@@ -2061,7 +2640,8 @@ function openAddResourceModal() {
                 id: `eng-${Date.now()}`,
                 name: name,
                 email: email,
-                password: password
+                password: password,
+                job_role: document.getElementById('newResourceJobRole').value || null,
             };
             await API.createResource(resourceData);
             clearDataCache();
@@ -2104,15 +2684,81 @@ let managementListenersInit = false;
 
 function renderManagement() {
     loadAdminUsers();
+    loadApiKeyStatus();
     if (!managementListenersInit) {
         managementListenersInit = true;
         document.getElementById('addAdminUser').addEventListener('click', addAdminUser);
         document.getElementById('exportData').addEventListener('click', exportData);
+        const csvBtn = document.getElementById('exportCsv');
+        if (csvBtn) csvBtn.addEventListener('click', exportCsv);
         document.getElementById('importData').addEventListener('click', () => {
             document.getElementById('importFile').click();
         });
         document.getElementById('importFile').addEventListener('change', importData);
         document.getElementById('resetData').addEventListener('click', resetData);
+
+        document.getElementById('anthropicSaveBtn').addEventListener('click', () => saveApiKey('anthropic_api_key'));
+        document.getElementById('anthropicRevokeBtn').addEventListener('click', () => revokeApiKey('anthropic_api_key'));
+    }
+}
+
+async function loadApiKeyStatus() {
+    try {
+        const r = await fetch(`${API_BASE}/settings/api-keys`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'failed');
+        const a = j.data.anthropic_api_key || { configured: false };
+        const statusEl = document.getElementById('anthropicStatus');
+        const revokeBtn = document.getElementById('anthropicRevokeBtn');
+        if (statusEl) {
+            if (a.configured) {
+                statusEl.innerHTML = `<span class="apikey-ok">● Configured${a.source === 'env' ? ' (from .env)' : ''}</span>`;
+                revokeBtn.hidden = a.source === 'env';   // can't revoke env vars from UI
+            } else {
+                statusEl.innerHTML = '<span class="apikey-off">○ Not set</span>';
+                revokeBtn.hidden = true;
+            }
+        }
+    } catch (err) {
+        const statusEl = document.getElementById('anthropicStatus');
+        if (statusEl) statusEl.innerHTML = `<span class="apikey-off">load failed: ${escapeHtml(err.message)}</span>`;
+    }
+}
+
+async function saveApiKey(name) {
+    const input = name === 'anthropic_api_key' ? document.getElementById('anthropicKeyInput') : null;
+    if (!input) return;
+    const value = input.value.trim();
+    if (!value) {
+        showToast('Paste a key first', 'error');
+        return;
+    }
+    try {
+        const r = await fetch(`${API_BASE}/settings/api-keys/${name}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value }),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
+        input.value = '';
+        showToast('API key saved', 'success');
+        loadApiKeyStatus();
+    } catch (err) {
+        showToast(`Save failed: ${err.message}`, 'error');
+    }
+}
+
+async function revokeApiKey(name) {
+    if (!(await showConfirmModal('Revoke this API key? Any AI feature using it will stop working until a new key is set.', { title: 'Revoke API key' }))) return;
+    try {
+        const r = await fetch(`${API_BASE}/settings/api-keys/${name}`, { method: 'DELETE' });
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'revoke failed');
+        showToast('API key revoked', 'success');
+        loadApiKeyStatus();
+    } catch (err) {
+        showToast(`Revoke failed: ${err.message}`, 'error');
     }
 }
 
@@ -2196,6 +2842,24 @@ async function removeAdminUser(username) {
 }
 
 
+async function exportCsv() {
+    try {
+        const res = await fetch('/api/export/csv');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `skills-matrix-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+        showToast('CSV export downloaded', 'success');
+    } catch (err) {
+        showToast('CSV export failed: ' + err.message, 'error');
+    }
+}
+
 async function exportData() {
     const data = await getData();
     const dataStr = JSON.stringify(data, null, 2);
@@ -2269,7 +2933,9 @@ async function populateSubSkillCheckboxes() {
         if (skillCategory.subSkills && skillCategory.subSkills.length > 0) {
             // Create collapsible category section
             const categorySection = document.createElement('div');
-            categorySection.className = 'collapsible-category expanded'; // All sections open by default
+            const stype = skillCategory.skillType || 'technical';
+            categorySection.className = `collapsible-category type-${stype}`;
+            categorySection.dataset.skillType = stype;
 
             // Create category header with select-all
             const header = document.createElement('div');
@@ -2278,7 +2944,7 @@ async function populateSubSkillCheckboxes() {
             // Toggle icon
             const toggleIcon = document.createElement('span');
             toggleIcon.className = 'toggle-icon';
-            toggleIcon.textContent = '▼'; // All expanded by default
+            toggleIcon.textContent = '▶'; // Collapsed by default
 
             // Select-all checkbox
             const selectAllCheckbox = document.createElement('input');
@@ -2406,12 +3072,10 @@ async function renderCustomRadarChart() {
     const selectedCheckboxes = container.querySelectorAll('input.subskill-checkbox:checked');
 
     if (selectedCheckboxes.length === 0) {
-        console.log('No sub-skills selected for custom radar chart');
-        // Hide chart or show message
-        const chartContainer = document.getElementById('customRadarChart');
-        if (chartContainer) {
-            chartContainer.style.display = 'none';
-        }
+        const canvas = document.getElementById('customRadarChart');
+        const placeholder = document.getElementById('radarPlaceholder');
+        if (canvas) canvas.style.display = 'none';
+        if (placeholder) placeholder.style.display = 'flex';
         return;
     }
 
@@ -2436,9 +3100,11 @@ async function renderCustomRadarChart() {
         customRadarChart.destroy();
     }
 
-    // Show chart canvas
+    // Show chart canvas, hide placeholder
     const canvas = document.getElementById('customRadarChart');
+    const placeholder = document.getElementById('radarPlaceholder');
     if (canvas) canvas.style.display = 'block';
+    if (placeholder) placeholder.style.display = 'none';
 
     customRadarChart = window._customRadarChart = new Chart(ctx, {
         type: 'radar',
@@ -2633,16 +3299,17 @@ function setupCustomChartEventListeners() {
             customRadarChart = null;
         }
 
-        // Hide chart canvas
+        // Hide chart canvas, show placeholder
         const canvas = document.getElementById('customRadarChart');
+        const placeholder = document.getElementById('radarPlaceholder');
         if (canvas) canvas.style.display = 'none';
+        if (placeholder) placeholder.style.display = 'flex';
     });
 
-    // Setup search filter
-    searchInput.addEventListener('input', () => {
-        console.log('Search input changed:', searchInput.value);
+    // Setup search filter (debounced)
+    searchInput.addEventListener('input', debounce(() => {
         filterSubSkills();
-    });
+    }, 150));
 
     // Initialize count
     setTimeout(() => {
@@ -2667,10 +3334,12 @@ async function openResourceModal(resourceId) {
 
     currentModalResourceId = resourceId;
 
-    // Set resource name, email, and password
+    // Set resource name, email, password, and job role
     document.getElementById('modalResourceName').textContent = resource.name;
     document.getElementById('modalResourceEmail').value = resource.email || '';
     document.getElementById('modalResourcePassword').value = resource.password || '';
+    const roleSelect = document.getElementById('modalResourceJobRole');
+    if (roleSelect) roleSelect.value = resource.job_role || '';
 
     // Populate skills
     const container = document.getElementById('modalSkillsContainer');
@@ -2932,6 +3601,10 @@ async function saveResourceSkills() {
         }
     });
 
+    // Pick up job-role change from the dropdown
+    const roleSelect = document.getElementById('modalResourceJobRole');
+    if (roleSelect) resource.job_role = roleSelect.value || null;
+
     // Save to API
     try {
         await API.updateResource(currentModalResourceId, resource);
@@ -2990,14 +3663,1033 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupNavigation();
     await updateLastUpdated();
     await renderDashboard();
+    wireSignOut();
 });
+
+/**
+ * HTTP-basic-auth sign-out is browser-quirky. The reliable trick:
+ *   1. Send a fetch with intentionally-invalid Authorization to force browsers
+ *      to drop the cached credentials.
+ *   2. Redirect to the public /welcome page so the user can't see protected
+ *      content while the prompt is suppressed.
+ */
+function wireSignOut() {
+    const btn = document.getElementById('signOutBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        try {
+            // Fire-and-forget bad-creds request; we ignore the rejection
+            await fetch('/api/health', {
+                headers: { 'Authorization': 'Basic ' + btoa('logout:logout') },
+                cache: 'no-store',
+            }).catch(() => {});
+        } catch (_) { /* ignore */ }
+        window.location.href = '/welcome.html';
+    });
+}
+
+// ==================== STAFFING VIEW ====================
+
+let staffingReqRows = [];
+let staffingInitialized = false;
+
+async function renderStaffing() {
+    const data = await getData();
+    const list = document.getElementById('staffingRequirements');
+    if (!list) return;
+
+    // Seed with one row if empty
+    if (staffingReqRows.length === 0) {
+        staffingReqRows = [{ mainSkill: data.skills[0] ? data.skills[0].name : '', minLevel: 3 }];
+    }
+
+    renderStaffingRows(data);
+
+    if (!staffingInitialized) {
+        document.getElementById('addStaffingReq').addEventListener('click', () => {
+            const cur = getData ? data : null;
+            staffingReqRows.push({ mainSkill: cur && cur.skills[0] ? cur.skills[0].name : '', minLevel: 3 });
+            renderStaffingRows(cur);
+        });
+        document.getElementById('runStaffingMatch').addEventListener('click', async () => {
+            await runStaffingMatch();
+        });
+        staffingInitialized = true;
+    }
+}
+
+function renderStaffingRows(data) {
+    const list = document.getElementById('staffingRequirements');
+    if (!list || !data) return;
+    list.innerHTML = staffingReqRows.map((req, i) => `
+        <div class="staffing-row" data-index="${i}">
+            <select class="staffing-skill">
+                ${data.skills.map(s => `<option value="${s.name}" ${s.name === req.mainSkill ? 'selected' : ''}>${s.name}</option>`).join('')}
+            </select>
+            <span>≥</span>
+            <select class="staffing-level">
+                ${[1,2,3,4,5].map(n => `<option value="${n}" ${n === req.minLevel ? 'selected' : ''}>${n}</option>`).join('')}
+            </select>
+            <button type="button" class="btn-secondary staffing-remove" aria-label="remove">×</button>
+        </div>
+    `).join('');
+
+    list.querySelectorAll('.staffing-row').forEach(row => {
+        const idx = Number(row.dataset.index);
+        row.querySelector('.staffing-skill').addEventListener('change', e => {
+            staffingReqRows[idx].mainSkill = e.target.value;
+        });
+        row.querySelector('.staffing-level').addEventListener('change', e => {
+            staffingReqRows[idx].minLevel = Number(e.target.value);
+        });
+        row.querySelector('.staffing-remove').addEventListener('click', () => {
+            staffingReqRows.splice(idx, 1);
+            renderStaffingRows(data);
+        });
+    });
+}
+
+async function runStaffingMatch() {
+    const out = document.getElementById('staffingResults');
+    out.innerHTML = '<p>Searching…</p>';
+    try {
+        const [matches, oneAway] = await Promise.all([
+            StaffingAPI.search(staffingReqRows, 'match'),
+            StaffingAPI.search(staffingReqRows, 'one-away'),
+        ]);
+        const renderList = (title, items, cssClass) => {
+            if (items.length === 0) return `<h3>${title}</h3><p class="empty">None.</p>`;
+            return `<h3>${title} <span class="badge">${items.length}</span></h3>
+              <ul class="staffing-list ${cssClass}">
+                ${items.map(r => {
+                    const gaps = r.gaps && r.gaps.length
+                        ? `<small>needs +1 in: ${r.gaps.map(g => g.mainSkill).join(', ')}</small>`
+                        : '';
+                    return `<li><strong>${r.name}</strong> <span class="muted">${r.email || ''}</span>${gaps ? '<br>' + gaps : ''}</li>`;
+                }).join('')}
+              </ul>`;
+        };
+        out.innerHTML =
+            renderList('Team members who meet every requirement', matches, 'staffing-list--match') +
+            renderList('Team members one level away', oneAway, 'staffing-list--away');
+    } catch (err) {
+        out.innerHTML = `<p class="error">Search failed: ${err.message}</p>`;
+    }
+}
+
+// ==================== COMPARE VIEW ====================
+
+let comparePickedIds = [];
+
+async function renderCompare() {
+    const data = await getData();
+    const picker = document.getElementById('compareResourcePicker');
+    if (!picker) return;
+
+    if (comparePickedIds.length === 0) {
+        comparePickedIds = data.resources.slice(0, 2).map(r => r.id);
+    }
+
+    picker.innerHTML = '<p style="margin: 0 0 0.5rem;">Pick 2–4 team members:</p>' +
+        data.resources.map(r => `
+            <label class="compare-pick">
+                <input type="checkbox" value="${r.id}" ${comparePickedIds.includes(r.id) ? 'checked' : ''}>
+                ${r.name}
+            </label>
+        `).join('');
+
+    picker.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', async () => {
+            const checked = Array.from(picker.querySelectorAll('input:checked')).map(x => x.value);
+            if (checked.length > 4) {
+                cb.checked = false;
+                showToast('Maximum 4 team members can be compared at once.', 'info');
+                return;
+            }
+            comparePickedIds = checked;
+            drawCompareHeatmaps(data);
+        });
+    });
+    drawCompareHeatmaps(data);
+}
+
+function drawCompareHeatmaps(data) {
+    drawOneCompareHeatmap(
+        document.getElementById('compareHeatmapTech'),
+        data,
+        s => (s.skillType || 'technical') === 'technical'
+    );
+    drawOneCompareHeatmap(
+        document.getElementById('compareHeatmapNonTech'),
+        data,
+        s => (s.skillType || 'technical') === 'non-technical'
+    );
+}
+
+function drawOneCompareHeatmap(host, data, skillFilter) {
+    if (!host) return;
+    if (comparePickedIds.length < 2) {
+        host.innerHTML = '<p class="empty">Pick at least 2 team members above.</p>';
+        return;
+    }
+    const cols = data.skills.filter(skillFilter);
+    if (cols.length === 0) {
+        host.innerHTML = '<p class="empty">No skills of this type yet.</p>';
+        return;
+    }
+    const rows = comparePickedIds
+        .map(id => data.resources.find(r => r.id === id))
+        .filter(Boolean);
+
+    let html = '<table class="compare-heatmap"><thead><tr><th class="sticky-col">Resource</th>';
+    cols.forEach(c => {
+        html += `<th title="weight ${c.weight}">${escapeHtml(c.name)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    rows.forEach(r => {
+        html += `<tr><td class="resource-name sticky-col">${escapeHtml(r.name)}</td>`;
+        cols.forEach(c => {
+            const lvl = (r.skills && r.skills[c.name]) || 0;
+            html += `<td class="skill-cell level-${lvl}" title="${escapeHtml(r.name)} — ${escapeHtml(c.name)}: ${lvl || 'none'}">${lvl || '-'}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody>';
+
+    // Footer: per-skill team average across the SELECTED resources
+    html += '<tfoot><tr><th class="sticky-col">Group avg</th>';
+    cols.forEach(c => {
+        const vals = rows.map(r => (r.skills && r.skills[c.name]) || 0).filter(v => v > 0);
+        const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+        html += `<th class="hm-foot-cell"><div class="hm-foot-avg">${avg ? avg.toFixed(1) : '—'}</div></th>`;
+    });
+    html += '</tr></tfoot></table>';
+
+    host.innerHTML = html;
+}
+
+// ==================== DATA QUALITY VIEW ====================
+
+async function renderQuality() {
+    const summary = document.getElementById('qualitySummary');
+    const detail = document.getElementById('qualityDetail');
+    if (!summary || !detail) return;
+    summary.innerHTML = '<p>Loading…</p>';
+    detail.innerHTML = '';
+
+    try {
+        const dq = await DataQualityAPI.get(365);
+        const s = dq.summary;
+        summary.innerHTML = `
+            <div class="quality-card ${s.noSkillsCount ? 'warn' : 'ok'}">
+              <div class="qc-num">${s.noSkillsCount}</div>
+              <div class="qc-label">Resources with no ratings</div>
+            </div>
+            <div class="quality-card ${s.noEmailCount ? 'warn' : 'ok'}">
+              <div class="qc-num">${s.noEmailCount}</div>
+              <div class="qc-label">Resources with no username</div>
+            </div>
+            <div class="quality-card ${s.emptySkillCount ? 'warn' : 'ok'}">
+              <div class="qc-num">${s.emptySkillCount}</div>
+              <div class="qc-label">Skills with no sub-skills</div>
+            </div>
+            <div class="quality-card ${s.staleRatingCount ? 'warn' : 'ok'}">
+              <div class="qc-num">${s.staleRatingCount}</div>
+              <div class="qc-label">Ratings &gt; 365 days old</div>
+            </div>
+            <div class="quality-card ${s.expiringCertCount ? 'warn' : 'ok'}">
+              <div class="qc-num">${s.expiringCertCount || 0}</div>
+              <div class="qc-label">Certs expiring &lt; 90 days</div>
+            </div>
+        `;
+        detail.innerHTML = `
+            ${renderQualityList('Resources with no ratings', dq.resourcesWithNoSkills, r => `${r.name} <span class="muted">(${r.id})</span>`)}
+            ${renderQualityList('Resources without a username', dq.resourcesWithNoEmail, r => r.name)}
+            ${renderQualityList('Empty main skills', dq.emptyMainSkills, r => `${r.name} <span class="muted">(${r.id})</span>`)}
+            ${renderQualityList('Stale ratings (oldest first)', dq.staleRatings.slice(0, 20),
+                r => `${r.resource_name} — ${r.main_skill} :: ${r.sub_skill} <span class="muted">${r.days_old} days old</span>`)}
+            ${renderQualityList('Certifications expiring within 90 days', (dq.expiringCerts || []),
+                r => {
+                    const d = r.days_until_expiry;
+                    const tag = d < 0 ? `<span class="muted">expired ${Math.abs(d)}d ago</span>`
+                              : d === 0 ? `<span class="muted">expires today</span>`
+                              : `<span class="muted">${d}d to go</span>`;
+                    return `${escapeHtml(r.resource_name)} — ${escapeHtml(r.training_name)}${r.training_code ? ' (' + escapeHtml(r.training_code) + ')' : ''} ${tag}`;
+                })}
+        `;
+    } catch (err) {
+        summary.innerHTML = `<p class="error">Could not load data quality: ${err.message}</p>`;
+    }
+}
+
+function renderQualityList(title, items, formatter) {
+    if (!items || items.length === 0) {
+        return `<section class="quality-section"><h3>${title}</h3><p class="empty">Nothing flagged.</p></section>`;
+    }
+    return `<section class="quality-section">
+        <h3>${title} <span class="badge">${items.length}</span></h3>
+        <ul class="quality-list">${items.map(it => `<li>${formatter(it)}</li>`).join('')}</ul>
+    </section>`;
+}
+
+// Dashboard tile populator (training)
+async function populateTrainingTile() {
+    const valueEl = document.getElementById('trainingActive');
+    const hintEl  = document.getElementById('trainingHint');
+    if (!valueEl || !hintEl) return;
+    try {
+        const r = await fetch(`${API_BASE}/trainings/assignments/all`);
+        const j = await r.json();
+        const items = j && j.data ? j.data : [];
+        const counts = { 'in-progress': 0, planned: 0, achieved: 0, expired: 0 };
+        items.forEach(a => { if (counts[a.status] !== undefined) counts[a.status] += 1; });
+        valueEl.textContent = counts['in-progress'];
+        hintEl.textContent  = `${counts.planned} planned · ${counts.achieved} achieved`;
+    } catch (err) {
+        valueEl.textContent = '—';
+        hintEl.textContent  = 'training data unavailable';
+    }
+    // Also surface the "certs expiring soon" banner on the dashboard
+    populateExpiryBanner().catch(() => {});
+}
+
+async function populateExpiryBanner() {
+    const banner = document.getElementById('expiryBanner');
+    if (!banner) return;
+    const WINDOW_DAYS = 90;
+    try {
+        const r = await fetch(`${API_BASE}/trainings/assignments/expiring?within=${WINDOW_DAYS}`);
+        const j = await r.json();
+        const items = (j && j.data) || [];
+        if (!items.length) {
+            banner.hidden = true;
+            banner.innerHTML = '';
+            return;
+        }
+        const overdue = items.filter(i => i.days_until_expiry < 0).length;
+        const soon = items.filter(i => i.days_until_expiry >= 0 && i.days_until_expiry <= 30).length;
+        const within90 = items.length - overdue - soon;
+        let summary = '';
+        if (overdue)  summary += `${overdue} expired · `;
+        if (soon)     summary += `${soon} within 30 days · `;
+        if (within90) summary += `${within90} within 90 days · `;
+        summary = summary.replace(/ · $/, '');
+        banner.hidden = false;
+        banner.innerHTML = `
+          <span class="alert-icon">⚠</span>
+          <span class="alert-text"><strong>${items.length} certification${items.length === 1 ? ' is' : 's are'} expiring soon</strong> — ${summary}</span>
+          <button class="btn-secondary alert-action" onclick="navigateToTraining(); setTimeout(() => { const t = document.querySelector('#training-view .t-tab[data-t-tab=\\'certifications\\']'); if (t) t.click(); }, 400);">Review</button>
+        `;
+    } catch (err) {
+        banner.hidden = true;
+    }
+}
+
+// ==================== TRAINING ====================
+
+const TrainingsAPI = {
+    list: () => fetch(`${API_BASE}/trainings`).then(r => r.json()).then(j => j.data || []),
+    create: (body) => apiJson(`${API_BASE}/trainings`, 'POST', body),
+    update: (id, body) => apiJson(`${API_BASE}/trainings/${id}`, 'PUT', body),
+    delete: (id) => apiJson(`${API_BASE}/trainings/${id}`, 'DELETE'),
+    assignmentsAll: () => fetch(`${API_BASE}/trainings/assignments/all`).then(r => r.json()).then(j => j.data || []),
+    expiring: (within = 365) => fetch(`${API_BASE}/trainings/assignments/expiring?within=${within}`).then(r => r.json()).then(j => j.data || []),
+    assignmentsFor: (rid) => fetch(`${API_BASE}/trainings/assignments/resource/${rid}`).then(r => r.json()).then(j => j.data || []),
+    assign: (body) => apiJson(`${API_BASE}/trainings/assignments`, 'POST', body),
+    updateAssignment: (aid, body) => apiJson(`${API_BASE}/trainings/assignments/${aid}`, 'PUT', body),
+    deleteAssignment: (aid) => apiJson(`${API_BASE}/trainings/assignments/${aid}`, 'DELETE'),
+};
+
+async function apiJson(url, method = 'GET', body = null) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    const ct = r.headers.get('content-type') || '';
+    const payload = ct.includes('application/json') ? await r.json() : null;
+    if (!r.ok || (payload && payload.success === false)) {
+        throw new Error((payload && payload.error) || `HTTP ${r.status}`);
+    }
+    return payload && payload.data;
+}
+
+let trainingState = {
+    catalogue: [],
+    assignmentsResourceId: '',     // '' = ALL resources (default)
+    assignments: [],
+    activeTab: 'assignments',
+    editingTrainingId: null,
+    editingAssignmentId: null,
+    catalogueSearch: '',
+};
+let trainingListenersBound = false;
+
+async function renderTraining() {
+    const data = await getData();
+    trainingState.catalogue = await TrainingsAPI.list();
+    // Resource filter: "" = all resources (default)
+    const select = document.getElementById('trainingResourceSelect');
+    if (select) {
+        select.innerHTML = '<option value="">All resources</option>' +
+            data.resources.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>`).join('');
+        select.value = trainingState.assignmentsResourceId || '';
+    }
+    bindTrainingListeners();
+    await loadAssignmentsForCurrent();
+    renderTrainingCatalogue();
+    renderTrainingAssignments();
+    applyTrainingTabState();
+}
+
+function bindTrainingListeners() {
+    if (trainingListenersBound) return;
+    trainingListenersBound = true;
+
+    // Tab switching
+    document.querySelectorAll('#training-view .t-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            trainingState.activeTab = btn.dataset.tTab;
+            applyTrainingTabState();
+        });
+    });
+
+    // Resource filter: empty string = all resources
+    document.getElementById('trainingResourceSelect').addEventListener('change', async (e) => {
+        trainingState.assignmentsResourceId = e.target.value || '';
+        await loadAssignmentsForCurrent();
+        renderTrainingAssignments();
+    });
+
+    // Catalogue add button
+    document.getElementById('trainingAddBtn').addEventListener('click', () => openTrainingEditModal(null));
+    // Catalogue search (debounced)
+    document.getElementById('trainingCatalogueSearch').addEventListener('input', debounce(e => {
+        trainingState.catalogueSearch = (e.target.value || '').toLowerCase();
+        renderTrainingCatalogue();
+    }, 150));
+
+    // Assignment "Assign Training" button
+    document.getElementById('trainingAssignBtn').addEventListener('click', () => openTrainingAssignModal(null));
+
+    // Modal save buttons
+    document.getElementById('trEditSaveBtn').addEventListener('click', saveTrainingEdit);
+    document.getElementById('trAssignSaveBtn').addEventListener('click', saveTrainingAssignment);
+
+    // Delegated click handling on catalogue + assignments lists
+    document.getElementById('trainingCatalogueList').addEventListener('click', onCatalogueClick);
+    document.getElementById('trainingAssignmentsList').addEventListener('click', onAssignmentsClick);
+}
+
+function applyTrainingTabState() {
+    document.querySelectorAll('#training-view .t-tab').forEach(b => {
+        b.classList.toggle('t-tab-active', b.dataset.tTab === trainingState.activeTab);
+    });
+    document.querySelectorAll('#training-view .t-pane').forEach(p => {
+        p.classList.toggle('t-pane-active', p.dataset.tPane === trainingState.activeTab);
+    });
+    if (trainingState.activeTab === 'certifications') {
+        renderCertifications().catch(() => {});
+    }
+}
+
+let certStatusChart = null;
+async function renderCertifications() {
+    const list = document.getElementById('certExpiryList');
+    const canvas = document.getElementById('certStatusChart');
+    if (!canvas || !list) return;
+
+    let assignments = [];
+    try {
+        assignments = await TrainingsAPI.assignmentsAll();
+    } catch (err) {
+        list.innerHTML = `<p class="empty">Could not load assignments: ${err.message}</p>`;
+        return;
+    }
+
+    // Group by training_name, count statuses
+    const byTraining = new Map();
+    assignments.forEach(a => {
+        const key = a.training_name;
+        if (!byTraining.has(key)) byTraining.set(key, { planned: 0, 'in-progress': 0, achieved: 0, expired: 0, code: a.training_code, vendor: a.vendor });
+        const bucket = byTraining.get(key);
+        if (bucket[a.status] !== undefined) bucket[a.status] += 1;
+    });
+
+    // Pick top 12 by total assignments
+    const entries = Array.from(byTraining.entries())
+        .map(([name, c]) => ({ name, ...c, total: c.planned + c['in-progress'] + c.achieved + c.expired }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 12);
+
+    if (certStatusChart) certStatusChart.destroy();
+    if (entries.length === 0) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || '#888';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No assignments yet — assign a training to start tracking.', canvas.width / 2, canvas.height / 2);
+    } else {
+        const labels = entries.map(e => e.name);
+        const mkSet = (key, label, color) => ({
+            label, data: entries.map(e => e[key]),
+            backgroundColor: color, borderWidth: 0,
+        });
+        certStatusChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    mkSet('achieved',    'Achieved',    'rgba(22, 163, 74, 0.85)'),
+                    mkSet('in-progress', 'In progress', 'rgba(37, 99, 235, 0.85)'),
+                    mkSet('planned',     'Planned',     'rgba(160, 174, 192, 0.75)'),
+                    mkSet('expired',     'Expired',     'rgba(220, 38, 38, 0.85)'),
+                ],
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true, ticks: { precision: 0 } },
+                    y: { stacked: true },
+                },
+                plugins: { legend: { position: 'bottom' } },
+            },
+        });
+    }
+
+    // Expiry timeline
+    let expiring = [];
+    try {
+        expiring = await TrainingsAPI.expiring(365);
+    } catch (err) {
+        // non-fatal
+    }
+    if (!expiring.length) {
+        list.innerHTML = '<p class="empty">No certifications are expiring in the next 12 months.</p>';
+        return;
+    }
+    list.innerHTML = `<ul class="cert-expiry-list">${expiring.map(e => {
+        const days = e.days_until_expiry;
+        const klass = days < 0 ? 'expired' : days <= 30 ? 'expiring-soon' : days <= 90 ? 'expiring' : '';
+        const label = days < 0 ? `expired ${Math.abs(days)}d ago`
+                    : days === 0 ? 'expires today'
+                    : `expires in ${days}d`;
+        return `<li class="${klass}">
+            <div class="cert-expiry-main">
+                <strong>${escapeHtml(e.training_name)}</strong>
+                ${e.training_code ? `<span class="training-code">${escapeHtml(e.training_code)}</span>` : ''}
+                <span class="muted"> · ${escapeHtml(e.resource_name)}</span>
+            </div>
+            <div class="cert-expiry-date">${new Date(e.expiry_date).toLocaleDateString()} <span class="muted">(${label})</span></div>
+        </li>`;
+    }).join('')}</ul>`;
+}
+
+function renderTrainingCatalogue() {
+    const list = document.getElementById('trainingCatalogueList');
+    if (!list) return;
+    const q = trainingState.catalogueSearch;
+    const items = (trainingState.catalogue || []).filter(t => {
+        if (!q) return true;
+        return [t.name, t.code, t.vendor, t.category, t.description]
+            .filter(Boolean).join(' ').toLowerCase().includes(q);
+    });
+
+    if (items.length === 0) {
+        list.innerHTML = '<p class="empty">No trainings in catalogue. Click "Add Training" to add one.</p>';
+        return;
+    }
+
+    // Group by vendor for readability
+    const byVendor = items.reduce((acc, t) => {
+        const v = t.vendor || 'Other';
+        (acc[v] = acc[v] || []).push(t);
+        return acc;
+    }, {});
+
+    list.innerHTML = Object.entries(byVendor).map(([vendor, ts]) => `
+        <section class="training-group">
+            <h3>${escapeHtml(vendor)} <span class="badge">${ts.length}</span></h3>
+            <div class="training-cards">
+                ${ts.map(t => `
+                    <div class="training-card" data-id="${t.id}">
+                        <div class="training-card-head">
+                            <h4>${escapeHtml(t.name)}</h4>
+                            ${t.code ? `<span class="training-code">${escapeHtml(t.code)}</span>` : ''}
+                        </div>
+                        <div class="training-meta">
+                            <span class="training-pill training-pill--${escapeHtml((t.category || 'other').replace(/[^a-z-]/gi, ''))}">${escapeHtml(t.category || 'other')}</span>
+                            <span class="training-pill training-pill--type">${escapeHtml(t.type || 'certification')}</span>
+                        </div>
+                        ${t.description ? `<p class="training-desc">${escapeHtml(t.description)}</p>` : ''}
+                        <div class="training-actions">
+                            <button class="btn-secondary t-edit-btn" data-id="${t.id}">Edit</button>
+                            <button class="btn-danger t-del-btn" data-id="${t.id}">Delete</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </section>
+    `).join('');
+}
+
+function onCatalogueClick(e) {
+    const editBtn = e.target.closest('.t-edit-btn');
+    if (editBtn) return openTrainingEditModal(parseInt(editBtn.dataset.id, 10));
+    const delBtn = e.target.closest('.t-del-btn');
+    if (delBtn) return confirmDeleteTraining(parseInt(delBtn.dataset.id, 10));
+}
+
+async function confirmDeleteTraining(id) {
+    const item = (trainingState.catalogue || []).find(t => t.id === id);
+    if (!item) return;
+    const ok = await showConfirmModal(
+        `Delete "${item.name}"? This will also remove the training from every resource it is assigned to.`,
+        { title: 'Delete training' }
+    );
+    if (!ok) return;
+    try {
+        await TrainingsAPI.delete(id);
+        trainingState.catalogue = trainingState.catalogue.filter(t => t.id !== id);
+        renderTrainingCatalogue();
+        // Refresh current resource's assignments — one may have just disappeared
+        await loadAssignmentsForCurrent();
+        renderTrainingAssignments();
+        showToast(`Deleted "${item.name}"`, 'success');
+    } catch (err) {
+        showToast(`Delete failed: ${err.message}`, 'error');
+    }
+}
+
+function openTrainingEditModal(id) {
+    trainingState.editingTrainingId = id;
+    const existing = id ? trainingState.catalogue.find(t => t.id === id) : null;
+    document.getElementById('trainingEditTitle').textContent = existing ? 'Edit Training' : 'Add Training';
+    document.getElementById('trEditName').value        = existing ? (existing.name || '') : '';
+    document.getElementById('trEditCode').value        = existing ? (existing.code || '') : '';
+    document.getElementById('trEditVendor').value      = existing ? (existing.vendor || '') : '';
+    document.getElementById('trEditCategory').value    = existing ? (existing.category || 'other') : 'cisco';
+    document.getElementById('trEditType').value        = existing ? (existing.type || 'certification') : 'certification';
+    document.getElementById('trEditDescription').value = existing ? (existing.description || '') : '';
+
+    // Augment the datalist with any custom categories already used in the catalogue
+    refreshCategorySuggestions();
+
+    document.getElementById('trainingEditModal').classList.add('show');
+}
+
+function refreshCategorySuggestions() {
+    const dl = document.getElementById('trCategorySuggestions');
+    if (!dl) return;
+    const baseline = new Set(
+        Array.from(dl.querySelectorAll('option')).map(o => o.value)
+    );
+    (trainingState.catalogue || []).forEach(t => {
+        if (t.category && !baseline.has(t.category)) {
+            const opt = document.createElement('option');
+            opt.value = t.category;
+            dl.appendChild(opt);
+            baseline.add(t.category);
+        }
+    });
+}
+
+function closeTrainingEditModal() {
+    document.getElementById('trainingEditModal').classList.remove('show');
+    trainingState.editingTrainingId = null;
+}
+window.closeTrainingEditModal = closeTrainingEditModal;
+
+async function saveTrainingEdit() {
+    // Normalise category: lower-case, spaces/underscores → hyphens, strip junk.
+    // Keeps the slug-based pill CSS classes well-behaved.
+    const rawCat = (document.getElementById('trEditCategory').value || '').trim().toLowerCase();
+    const category = rawCat.replace(/[\s_]+/g, '-').replace(/[^a-z0-9-]/g, '') || 'other';
+    const body = {
+        name: document.getElementById('trEditName').value.trim(),
+        code: document.getElementById('trEditCode').value.trim() || null,
+        vendor: document.getElementById('trEditVendor').value.trim() || null,
+        category,
+        type: document.getElementById('trEditType').value,
+        description: document.getElementById('trEditDescription').value.trim() || null,
+    };
+    if (!body.name) {
+        showToast('Name is required', 'error');
+        return;
+    }
+    try {
+        const data = trainingState.editingTrainingId
+            ? await TrainingsAPI.update(trainingState.editingTrainingId, body)
+            : await TrainingsAPI.create(body);
+        // Refresh the in-memory catalogue
+        trainingState.catalogue = await TrainingsAPI.list();
+        renderTrainingCatalogue();
+        closeTrainingEditModal();
+        showToast(trainingState.editingTrainingId ? 'Training updated' : 'Training added', 'success');
+    } catch (err) {
+        showToast(`Save failed: ${err.message}`, 'error');
+    }
+}
+
+async function loadAssignmentsForCurrent() {
+    try {
+        if (trainingState.assignmentsResourceId) {
+            trainingState.assignments = await TrainingsAPI.assignmentsFor(trainingState.assignmentsResourceId);
+        } else {
+            trainingState.assignments = await TrainingsAPI.assignmentsAll();
+        }
+    } catch (err) {
+        trainingState.assignments = [];
+    }
+}
+
+function renderTrainingAssignments() {
+    const list = document.getElementById('trainingAssignmentsList');
+    if (!list) return;
+    const items = trainingState.assignments;
+
+    // Resource name is always shown on assignment cards so you can tell at a
+    // glance whose planned/in-progress/achieved training it is.
+    const showResource = true;
+    // Empty filter = looking at all resources at once; can't "assign" without
+    // picking a specific one first.
+    const allResources = !trainingState.assignmentsResourceId;
+
+    const assignBtn = document.getElementById('trainingAssignBtn');
+    if (assignBtn) {
+        assignBtn.disabled = allResources;
+        assignBtn.title = allResources ? 'Pick a resource first to assign a training' : '';
+    }
+
+    if (!items.length) {
+        list.innerHTML = allResources
+            ? '<p class="empty">No trainings assigned to anyone yet. Pick a resource and click "Assign Training" to start.</p>'
+            : '<p class="empty">No trainings assigned. Click "Assign Training" to start.</p>';
+        return;
+    }
+
+    // Group by status for clarity
+    const groups = {
+        'in-progress': [], 'planned': [], 'achieved': [], 'expired': [],
+    };
+    items.forEach(it => { if (groups[it.status]) groups[it.status].push(it); });
+
+    const today = new Date();
+    list.innerHTML = Object.entries(groups).filter(([, arr]) => arr.length).map(([status, arr]) => `
+        <section class="training-group">
+            <h3>${formatStatus(status)} <span class="badge">${arr.length}</span></h3>
+            <div class="training-cards">
+                ${arr.map(a => {
+                    const td = a.target_date ? new Date(a.target_date) : null;
+                    const overdue = td && status !== 'achieved' && td < today;
+                    const ex = a.expiry_date ? new Date(a.expiry_date) : null;
+                    const daysToExpiry = ex ? Math.floor((ex - today) / 86400000) : null;
+                    const expClass = daysToExpiry === null ? '' :
+                        (daysToExpiry < 0 ? 'expired' :
+                         daysToExpiry <= 30 ? 'expiring-soon' :
+                         daysToExpiry <= 90 ? 'expiring' : '');
+                    return `
+                    <div class="training-card assignment-card status-${escapeHtml(a.status)}">
+                        <div class="training-card-head">
+                            <h4>${escapeHtml(a.training_name)}</h4>
+                            ${a.training_code ? `<span class="training-code">${escapeHtml(a.training_code)}</span>` : ''}
+                        </div>
+                        ${showResource && a.resource_name ? `<div class="assignment-resource">${escapeHtml(a.resource_name)}</div>` : ''}
+                        <div class="training-meta">
+                            <span class="training-pill training-pill--${escapeHtml((a.category || 'other').replace(/[^a-z-]/gi, ''))}">${escapeHtml(a.category || 'other')}</span>
+                            <span class="training-pill assignment-pill--${escapeHtml(a.status)}">${formatStatus(a.status)}</span>
+                            ${td ? `<span class="training-date ${overdue ? 'overdue' : ''}">target ${td.toLocaleDateString()}</span>` : ''}
+                            ${a.completed_date ? `<span class="training-date">completed ${new Date(a.completed_date).toLocaleDateString()}</span>` : ''}
+                            ${ex ? `<span class="training-date ${expClass}">expires ${ex.toLocaleDateString()}${daysToExpiry !== null ? ' (' + (daysToExpiry < 0 ? Math.abs(daysToExpiry) + 'd ago' : daysToExpiry + 'd') + ')' : ''}</span>` : ''}
+                        </div>
+                        ${a.notes ? `<p class="training-desc">${escapeHtml(a.notes)}</p>` : ''}
+                        <div class="training-actions">
+                            <button class="btn-secondary t-asgn-edit-btn" data-id="${a.id}">Edit</button>
+                            <button class="btn-danger t-asgn-del-btn" data-id="${a.id}">Unassign</button>
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        </section>
+    `).join('');
+}
+
+function formatStatus(s) {
+    return ({
+        'planned': 'Planned',
+        'in-progress': 'In progress',
+        'achieved': 'Achieved',
+        'expired': 'Expired',
+    })[s] || s;
+}
+
+function onAssignmentsClick(e) {
+    const editBtn = e.target.closest('.t-asgn-edit-btn');
+    if (editBtn) return openTrainingAssignModal(parseInt(editBtn.dataset.id, 10));
+    const delBtn = e.target.closest('.t-asgn-del-btn');
+    if (delBtn) return confirmDeleteAssignment(parseInt(delBtn.dataset.id, 10));
+}
+
+async function confirmDeleteAssignment(id) {
+    const a = trainingState.assignments.find(x => x.id === id);
+    if (!a) return;
+    const ok = await showConfirmModal(
+        `Unassign "${a.training_name}" from this resource?`,
+        { title: 'Unassign training' }
+    );
+    if (!ok) return;
+    try {
+        await TrainingsAPI.deleteAssignment(id);
+        await loadAssignmentsForCurrent();
+        renderTrainingAssignments();
+        showToast('Unassigned', 'success');
+    } catch (err) {
+        showToast(`Unassign failed: ${err.message}`, 'error');
+    }
+}
+
+function openTrainingAssignModal(assignmentId) {
+    trainingState.editingAssignmentId = assignmentId;
+    const existing = assignmentId ? trainingState.assignments.find(a => a.id === assignmentId) : null;
+    document.getElementById('trainingAssignTitle').textContent =
+        existing ? 'Edit Assignment' : 'Assign Training';
+
+    // Populate training dropdown
+    const sel = document.getElementById('trAssignTraining');
+    const assignedIds = new Set((trainingState.assignments || []).map(a => a.training_id));
+    sel.innerHTML = trainingState.catalogue
+        .filter(t => existing ? true : !assignedIds.has(t.id))   // when editing, allow current
+        .map(t => `<option value="${t.id}">${escapeHtml(t.vendor || 'Other')} — ${escapeHtml(t.name)}${t.code ? ' (' + escapeHtml(t.code) + ')' : ''}</option>`)
+        .join('');
+    sel.value = existing ? existing.training_id : (sel.options[0] ? sel.options[0].value : '');
+    sel.disabled = !!existing;   // can't change training mid-assignment
+
+    document.getElementById('trAssignStatus').value         = existing ? existing.status : 'planned';
+    document.getElementById('trAssignTargetDate').value     = existing && existing.target_date ? existing.target_date.slice(0, 10) : '';
+    document.getElementById('trAssignCompletedDate').value  = existing && existing.completed_date ? existing.completed_date.slice(0, 10) : '';
+    document.getElementById('trAssignExpiryDate').value     = existing && existing.expiry_date ? existing.expiry_date.slice(0, 10) : '';
+    document.getElementById('trAssignNotes').value          = existing ? (existing.notes || '') : '';
+    updateAssignExpiryVisibility();
+    document.getElementById('trAssignStatus').onchange = updateAssignExpiryVisibility;
+    document.getElementById('trainingAssignModal').classList.add('show');
+}
+
+function updateAssignExpiryVisibility() {
+    const status = document.getElementById('trAssignStatus').value;
+    const row = document.getElementById('trAssignExpiryRow');
+    // Show expiry on Achieved (the main case) AND on In-progress (so you can set
+    // the target expiry up-front when the cert is in flight).
+    if (row) row.style.display = (status === 'achieved' || status === 'in-progress') ? '' : 'none';
+}
+
+function closeTrainingAssignModal() {
+    document.getElementById('trainingAssignModal').classList.remove('show');
+    trainingState.editingAssignmentId = null;
+}
+window.closeTrainingAssignModal = closeTrainingAssignModal;
+
+async function saveTrainingAssignment() {
+    const status = document.getElementById('trAssignStatus').value;
+    const target = document.getElementById('trAssignTargetDate').value || null;
+    const completed = document.getElementById('trAssignCompletedDate').value || null;
+    const expiry = document.getElementById('trAssignExpiryDate').value || null;
+    const notes = document.getElementById('trAssignNotes').value.trim() || null;
+    try {
+        if (trainingState.editingAssignmentId) {
+            await TrainingsAPI.updateAssignment(trainingState.editingAssignmentId,
+                { status, target_date: target, completed_date: completed, expiry_date: expiry, notes });
+        } else {
+            const training_id = parseInt(document.getElementById('trAssignTraining').value, 10);
+            if (!training_id) {
+                showToast('Pick a training first', 'error');
+                return;
+            }
+            await TrainingsAPI.assign({
+                resource_id: trainingState.assignmentsResourceId,
+                training_id,
+                status, target_date: target, completed_date: completed, expiry_date: expiry, notes,
+            });
+        }
+        await loadAssignmentsForCurrent();
+        renderTrainingAssignments();
+        closeTrainingAssignModal();
+        showToast(trainingState.editingAssignmentId ? 'Assignment updated' : 'Assignment created', 'success');
+    } catch (err) {
+        showToast(`Save failed: ${err.message}`, 'error');
+    }
+}
+
+// ==================== INSIGHTS ====================
+
+let insightsBound = false;
+async function renderInsights() {
+    const grid = document.getElementById('insightsGrid');
+    if (!grid) return;
+    grid.innerHTML = '<div class="insights-loading">Loading insights…</div>';
+
+    let insights = [];
+    try {
+        const r = await fetch(`${API_BASE}/insights`);
+        const j = await r.json();
+        insights = (j && j.data) || [];
+    } catch (err) {
+        grid.innerHTML = `<p class="empty">Could not load insights: ${escapeHtml(err.message)}</p>`;
+        return;
+    }
+
+    grid.innerHTML = insights.map(i => `
+        <div class="insight-card insight-${escapeHtml(i.severity || 'info')}">
+            <div class="insight-card-head">
+                <span class="insight-severity-dot"></span>
+                <h4>${escapeHtml(i.title)}</h4>
+            </div>
+            <p class="insight-body">${escapeHtml(i.body)}</p>
+            ${(i.detail && i.detail.length) ? `
+                <ul class="insight-detail">
+                    ${i.detail.map(d => `<li>${escapeHtml(d)}</li>`).join('')}
+                </ul>` : ''}
+        </div>
+    `).join('');
+
+    if (!insightsBound) {
+        insightsBound = true;
+        document.getElementById('matchSpecBtn').addEventListener('click', runProjectMatch);
+        document.getElementById('matchSpecAiBtn').addEventListener('click', runProjectMatchAI);
+        document.getElementById('matchSpec').addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runProjectMatch();
+        });
+    }
+}
+
+async function runProjectMatchAI() {
+    const spec = (document.getElementById('matchSpec').value || '').trim();
+    const out = document.getElementById('matchOutput');
+    if (!spec || spec.length < 5) {
+        out.innerHTML = '<p class="empty">Give me at least a sentence to work with.</p>';
+        return;
+    }
+    out.innerHTML = '<p class="empty">Asking Claude to analyse…</p>';
+    try {
+        const r = await fetch(`${API_BASE}/insights/match/ai`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ spec }),
+        });
+        const j = await r.json();
+        if (r.status === 503) {
+            out.innerHTML = '<p class="empty">No Anthropic API key configured. Set one in <strong>Settings → AI / API Keys</strong>, then try again.</p>';
+            return;
+        }
+        if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
+
+        const rb = j.data.rule_based;
+        let html = '';
+        // AI analysis first — it's the value-add
+        html += `<div class="ai-analysis">
+            <h4>✨ AI analysis</h4>
+            <div class="ai-prose">${escapeHtml(j.data.ai_analysis || '(no analysis returned)').replace(/\n\n/g, '</p><p>').replace(/^/, '<p>').replace(/$/, '</p>')}</div>
+            <small class="muted">Model: ${escapeHtml(j.data.model || '?')} · ${j.data.usage ? (j.data.usage.input_tokens + ' input + ' + j.data.usage.output_tokens + ' output tokens') : ''}</small>
+        </div>`;
+
+        // And the underlying rule-based pick for transparency
+        html += '<details class="ai-rulebased"><summary>Rule-based matcher output</summary>';
+        html += '<h4>Inferred requirements</h4>';
+        html += '<ul class="match-reqs">' + (rb.requirements || []).map(r => `
+            <li><strong>${escapeHtml(r.mainSkill)}</strong> <span class="muted">≥ ${r.minLevel}</span></li>`).join('') + '</ul>';
+        html += '<h4>Top candidates</h4>';
+        html += '<ol class="match-candidates">';
+        for (const c of (rb.candidates || [])) {
+            const pct = Math.round((c.requirements_met / c.requirements_total) * 100);
+            html += `<li>
+                <div class="match-cand-head">
+                    <strong>${escapeHtml(c.name)}</strong>
+                    <span class="match-met">${c.requirements_met} / ${c.requirements_total} requirements met</span>
+                    <span class="match-bar"><span class="match-bar-fill" style="width:${pct}%"></span></span>
+                </div>
+            </li>`;
+        }
+        html += '</ol></details>';
+
+        out.innerHTML = html;
+    } catch (err) {
+        out.innerHTML = `<p class="empty">AI analysis failed: ${escapeHtml(err.message)}</p>`;
+    }
+}
+
+async function runProjectMatch() {
+    const spec = (document.getElementById('matchSpec').value || '').trim();
+    const out = document.getElementById('matchOutput');
+    if (!spec || spec.length < 5) {
+        out.innerHTML = '<p class="empty">Give me at least a sentence to work with.</p>';
+        return;
+    }
+    out.innerHTML = '<p class="empty">Matching…</p>';
+    try {
+        const r = await fetch(`${API_BASE}/insights/match`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ spec }),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
+        const d = j.data;
+        if (!d.matched_skills.length) {
+            out.innerHTML = `<p class="empty">${escapeHtml(d.note || 'No matching skills found.')}</p>`;
+            return;
+        }
+        let html = '<div class="match-results">';
+        html += '<h4>Inferred requirements</h4>';
+        html += '<ul class="match-reqs">' + d.requirements.map(r => `
+            <li>
+                <strong>${escapeHtml(r.mainSkill)}</strong>
+                <span class="muted">≥ ${r.minLevel}</span>
+                ${r.matched_terms.length ? `<span class="muted">— matched on: ${r.matched_terms.map(escapeHtml).join(', ')}</span>` : ''}
+            </li>`).join('') + '</ul>';
+
+        html += '<h4>Top candidates</h4>';
+        if (!d.candidates.length) {
+            html += '<p class="empty">No team members match these requirements yet.</p>';
+        } else {
+            html += '<ol class="match-candidates">';
+            for (const c of d.candidates) {
+                const pct = Math.round((c.requirements_met / c.requirements_total) * 100);
+                html += `
+                    <li>
+                        <div class="match-cand-head">
+                            <strong>${escapeHtml(c.name)}</strong>
+                            <span class="match-met">${c.requirements_met} / ${c.requirements_total} requirements met</span>
+                            <span class="match-bar" title="${pct}% match"><span class="match-bar-fill" style="width:${pct}%"></span></span>
+                        </div>
+                        ${c.matched.length ? `<div class="match-meta">✓ ${c.matched.map(m => `${escapeHtml(m.skill)} (L${m.level})`).join(', ')}</div>` : ''}
+                        ${c.gaps.length ? `<div class="match-meta match-gap">✗ ${c.gaps.map(g => `${escapeHtml(g.skill)} (L${g.level}, ${g.gap} short)`).join(', ')}</div>` : ''}
+                    </li>`;
+            }
+            html += '</ol>';
+        }
+        html += '</div>';
+        out.innerHTML = html;
+    } catch (err) {
+        out.innerHTML = `<p class="empty">Match failed: ${escapeHtml(err.message)}</p>`;
+    }
+}
+
+// ==================== UTILITIES ====================
+
+function debounce(fn, wait = 200) {
+    let t;
+    return function (...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), wait);
+    };
+}
 
 function updateChartTheme() {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
     const labelColor = isDark ? '#a0aec0' : '#4a5568';
 
-    [window._teamRadarChart, window._customRadarChart].forEach(function (chart) {
+    [window._teamRadarChartTech, window._teamRadarChartNonTech, window._customRadarChart].forEach(function (chart) {
         if (!chart) return;
         const scales = chart.options.scales;
         if (scales && scales.r) {

@@ -267,17 +267,38 @@ router.put('/:id', async (req, res) => {
             [name || null, category !== undefined ? category : null, weight || null, skillType || null, id]
         );
 
-        // Update sub-skills if provided
+        // Update sub-skills if provided. DIFF-based: only delete the ones that
+        // were removed, only insert the ones that are new. Preserves existing
+        // sub_skill rows (and therefore every resource's rating for them).
+        //
+        // (The old code was DELETE-all + INSERT-all, which cascaded into
+        // resource_sub_skills and wiped every team rating for this skill.)
         if (subSkills && Array.isArray(subSkills)) {
-            // Delete existing sub-skills
-            await client.query('DELETE FROM sub_skills WHERE main_skill_id = $1', [id]);
+            const desired = subSkills
+                .filter(s => s && typeof s === 'string')
+                .map(s => s.trim())
+                .filter(Boolean);
+            const desiredSet = new Set(desired);
 
-            // Insert new sub-skills
-            for (const subSkillName of subSkills) {
-                if (subSkillName && typeof subSkillName === 'string') {
+            const currentResult = await client.query(
+                'SELECT id, name FROM sub_skills WHERE main_skill_id = $1',
+                [id]
+            );
+            const currentNames = new Set(currentResult.rows.map(r => r.name));
+
+            // Delete only the sub-skills that are NOT in the desired list.
+            // (Cascade still applies, but only for skills the user actually removed.)
+            const toDelete = currentResult.rows.filter(r => !desiredSet.has(r.name));
+            for (const row of toDelete) {
+                await client.query('DELETE FROM sub_skills WHERE id = $1', [row.id]);
+            }
+
+            // Insert only the ones that don't already exist.
+            for (const name of desired) {
+                if (!currentNames.has(name)) {
                     await client.query(
                         'INSERT INTO sub_skills (main_skill_id, name) VALUES ($1, $2)',
-                        [id, subSkillName.trim()]
+                        [id, name]
                     );
                 }
             }

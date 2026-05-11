@@ -24,15 +24,25 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
 
     try {
         const response = await fetch(`${API_BASE}${endpoint}`, options);
-        const result = await response.json();
-
-        if (!result.success) {
-            throw new Error(result.error || 'API request failed');
+        // Some endpoints (e.g. /api/export/csv) return non-JSON
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response;
         }
-
-        return result.data;
+        const result = await response.json();
+        if (!response.ok || (result && result.success === false)) {
+            const msg = (result && (result.error || result.message)) || `HTTP ${response.status}`;
+            throw new Error(msg);
+        }
+        return result.data !== undefined ? result.data : result;
     } catch (error) {
         console.error(`API Error [${method} ${endpoint}]:`, error);
+        if (typeof window.showToast === 'function') {
+            window.showToast(`${method} ${endpoint} failed: ${error.message}`, 'error');
+        }
         throw error;
     }
 }
@@ -196,8 +206,29 @@ async function checkHealth() {
     }
 }
 
+/**
+ * Staffing API
+ */
+const StaffingAPI = {
+    async search(requirements, mode = 'match') {
+        return await apiRequest('/staffing/search', 'POST', { requirements, mode });
+    }
+};
+
+/**
+ * Data Quality API
+ */
+const DataQualityAPI = {
+    async get(staleDays = 365) {
+        return await apiRequest(`/data-quality?staleDays=${staleDays}`, 'GET');
+    }
+};
+
 // Export APIs
 window.DataAPI = DataAPI;
 window.ResourcesAPI = ResourcesAPI;
 window.SkillsAPI = SkillsAPI;
+window.StaffingAPI = StaffingAPI;
+window.DataQualityAPI = DataQualityAPI;
 window.checkHealth = checkHealth;
+window.apiRequest = apiRequest;

@@ -18,7 +18,7 @@ function calculateMainSkillLevel(subSkills) {
 router.get('/', async (req, res) => {
     try {
         const result = await db.query(
-            'SELECT id, name, email, created_at, updated_at FROM resources ORDER BY name'
+            'SELECT id, name, email, job_role, created_at, updated_at FROM resources ORDER BY name'
         );
 
         res.json({
@@ -42,7 +42,7 @@ router.get('/:id', async (req, res) => {
 
         // Get resource
         const resourceResult = await db.query(
-            'SELECT id, name, email FROM resources WHERE id = $1',
+            'SELECT id, name, email, job_role FROM resources WHERE id = $1',
             [id]
         );
 
@@ -57,7 +57,7 @@ router.get('/:id', async (req, res) => {
 
         // Get resource's skill levels
         const mappingsResult = await db.query(`
-            SELECT rss.sub_skill_id, rss.level,
+            SELECT rss.sub_skill_id, rss.level, rss.last_assessed_at,
                    ss.name as sub_skill_name, ss.main_skill_id,
                    ms.name as main_skill_name
             FROM resource_sub_skills rss
@@ -70,15 +70,18 @@ router.get('/:id', async (req, res) => {
         // Build skills structure
         const subSkills = {};
         const skills = {};
+        const lastAssessed = {}; // mainSkillName -> { subSkillName -> ISO timestamp }
 
         mappingsResult.rows.forEach(mapping => {
             const mainSkillName = mapping.main_skill_name;
 
             if (!subSkills[mainSkillName]) {
                 subSkills[mainSkillName] = {};
+                lastAssessed[mainSkillName] = {};
             }
 
             subSkills[mainSkillName][mapping.sub_skill_name] = mapping.level;
+            lastAssessed[mainSkillName][mapping.sub_skill_name] = mapping.last_assessed_at;
         });
 
         // Calculate main skill levels
@@ -91,7 +94,8 @@ router.get('/:id', async (req, res) => {
             data: {
                 ...resource,
                 skills: skills,
-                subSkills: subSkills
+                subSkills: subSkills,
+                lastAssessed: lastAssessed
             }
         });
 
@@ -107,7 +111,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/resources - Create new resource
 router.post('/', async (req, res) => {
     try {
-        const { id, name, email, password } = req.body;
+        const { id, name, email, password, job_role } = req.body;
 
         if (!id || !name) {
             return res.status(400).json({
@@ -137,8 +141,8 @@ router.post('/', async (req, res) => {
 
         // Insert new resource
         const result = await db.query(
-            'INSERT INTO resources (id, name, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, email, created_at',
-            [id, name, email || null, passwordHash]
+            'INSERT INTO resources (id, name, email, password_hash, job_role) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, job_role, created_at',
+            [id, name, email || null, passwordHash, job_role || null]
         );
 
         // Update metadata
@@ -167,7 +171,7 @@ router.put('/:id', async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { name, email, password, subSkills } = req.body;
+        const { name, email, password, subSkills, job_role } = req.body;
 
         await client.query('BEGIN');
 
@@ -192,43 +196,78 @@ router.put('/:id', async (req, res) => {
         }
 
         // Update resource basic info
-        if (name || email !== undefined || passwordHash !== undefined) {
+        if (name || email !== undefined || passwordHash !== undefined || job_role !== undefined) {
             await client.query(
-                'UPDATE resources SET name = COALESCE($1, name), email = COALESCE($2, email), password_hash = COALESCE($3, password_hash), updated_at = CURRENT_TIMESTAMP WHERE id = $4',
-                [name || null, email !== undefined ? email : null, passwordHash, id]
+                `UPDATE resources
+                 SET name          = COALESCE($1, name),
+                     email         = COALESCE($2, email),
+                     password_hash = COALESCE($3, password_hash),
+                     job_role      = COALESCE($4, job_role),
+                     updated_at    = CURRENT_TIMESTAMP
+                 WHERE id = $5`,
+                [name || null, email !== undefined ? email : null, passwordHash, job_role || null, id]
             );
         }
 
-        // Update sub-skill levels if provided
+        // Update sub-skill levels if provided. DIFF-based: only touch ratings
+        // that actually change. Preserves last_assessed_at on untouched ratings
+        // and means a stale cache can't wipe a resource's data by sending a
+        // partial subSkills object.
         if (subSkills) {
-            // Delete existing skill assignments
-            await client.query(
-                'DELETE FROM resource_sub_skills WHERE resource_id = $1',
-                [id]
-            );
-
-            // Insert new skill assignments
+            // Build the desired (sub_skill_id → level) set from the payload.
+            const desired = new Map();
+            const unknownPairs = [];
             for (const [mainSkillName, subSkillsObj] of Object.entries(subSkills)) {
-                for (const [subSkillName, level] of Object.entries(subSkillsObj)) {
-                    // Find the sub-skill ID
-                    const subSkillResult = await client.query(`
-                        SELECT ss.id
-                        FROM sub_skills ss
+                for (const [subSkillName, level] of Object.entries(subSkillsObj || {})) {
+                    const lvl = parseInt(level, 10);
+                    if (!Number.isFinite(lvl) || lvl < 0 || lvl > 5) continue;
+                    if (lvl === 0) continue; // 0 = no rating, don't store
+                    const r = await client.query(`
+                        SELECT ss.id FROM sub_skills ss
                         JOIN main_skills ms ON ss.main_skill_id = ms.id
                         WHERE ms.name = $1 AND ss.name = $2
                     `, [mainSkillName, subSkillName]);
-
-                    if (subSkillResult.rows.length > 0) {
-                        const subSkillId = subSkillResult.rows[0].id;
-
-                        await client.query(
-                            'INSERT INTO resource_sub_skills (resource_id, sub_skill_id, level) VALUES ($1, $2, $3)',
-                            [id, subSkillId, level]
-                        );
+                    if (r.rows.length > 0) {
+                        desired.set(r.rows[0].id, lvl);
                     } else {
-                        console.warn(`Sub-skill not found: ${mainSkillName} -> ${subSkillName}`);
+                        unknownPairs.push(`${mainSkillName} :: ${subSkillName}`);
                     }
                 }
+            }
+            if (unknownPairs.length) {
+                console.warn(`Sub-skills not found for resource ${id}:`, unknownPairs.slice(0, 5));
+            }
+
+            // Read current ratings.
+            const currentRows = (await client.query(
+                'SELECT sub_skill_id, level FROM resource_sub_skills WHERE resource_id = $1',
+                [id]
+            )).rows;
+            const current = new Map(currentRows.map(r => [r.sub_skill_id, r.level]));
+
+            // Delete any ratings no longer in the payload.
+            for (const subSkillId of current.keys()) {
+                if (!desired.has(subSkillId)) {
+                    await client.query(
+                        'DELETE FROM resource_sub_skills WHERE resource_id = $1 AND sub_skill_id = $2',
+                        [id, subSkillId]
+                    );
+                }
+            }
+            // Insert or update ratings that changed.
+            for (const [subSkillId, lvl] of desired.entries()) {
+                if (!current.has(subSkillId)) {
+                    await client.query(
+                        'INSERT INTO resource_sub_skills (resource_id, sub_skill_id, level, last_assessed_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)',
+                        [id, subSkillId, lvl]
+                    );
+                } else if (current.get(subSkillId) !== lvl) {
+                    await client.query(
+                        'UPDATE resource_sub_skills SET level = $1, last_assessed_at = CURRENT_TIMESTAMP WHERE resource_id = $2 AND sub_skill_id = $3',
+                        [lvl, id, subSkillId]
+                    );
+                }
+                // else: unchanged, leave last_assessed_at alone
             }
         }
 

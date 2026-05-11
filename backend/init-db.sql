@@ -83,3 +83,7 @@ CREATE TRIGGER update_metadata_updated_at BEFORE UPDATE ON metadata
 -- Create indexes for better query performance
 CREATE INDEX idx_main_skills_name ON main_skills(name);
 CREATE INDEX idx_sub_skills_name ON sub_skills(name);
+
+-- Grant permissions to app user
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO skillsuser;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO skillsuser;

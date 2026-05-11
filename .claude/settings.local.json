@@ -4,7 +4,10 @@
       "Bash(git:*)",
       "Bash(git config:*)",
       "Bash(docker:*)",
-      "Bash(powershell.exe:*)"
+      "Bash(powershell.exe:*)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(ssh:*)"
     ]
   }
 }

@@ -38,3 +38,7 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+
+# Playwright e2e snapshot dumps (artefacts from local test runs only)
+__*/
+__*.png
