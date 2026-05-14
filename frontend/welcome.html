@@ -101,7 +101,10 @@
     </div>
     <script>
         document.getElementById('signInBtn').addEventListener('click', () => {
-            window.location.href = '/';
+            // /signin requires Basic Auth (triggering the browser prompt) and
+            // redirects to / on success. Going straight to / would just bounce
+            // us back here via the 401-redirect rule.
+            window.location.href = '/signin';
         });
     </script>
 </body>

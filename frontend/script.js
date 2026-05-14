@@ -1075,17 +1075,91 @@ async function renderDashboard() {
 
     // Single Points of Failure: main skills where <= 1 person is rated L4+ at the
     // main-skill level. Surfaces bus-factor risk across the catalogue.
-    let spofOne = 0;   // exactly one expert
-    let spofZero = 0;  // nobody at expert level
+    const spofSole = [];   // [{ skill, expert }] — exactly one expert
+    const spofNone = [];   // [skill] — nobody at expert level
     data.skills.forEach(skill => {
         if (!skill.subSkills || skill.subSkills.length === 0) return; // skip orphan main skills
-        const expertCount = data.resources.filter(r => (r.skills && r.skills[skill.name] >= 4)).length;
-        if (expertCount === 0) spofZero += 1;
-        else if (expertCount === 1) spofOne += 1;
+        const experts = data.resources.filter(r => (r.skills && r.skills[skill.name] >= 4));
+        if (experts.length === 0) spofNone.push(skill.name);
+        else if (experts.length === 1) spofSole.push({ skill: skill.name, expert: experts[0].name });
     });
-    setText('spofValue', spofOne + spofZero);
-    setText('spofOne',   spofOne);
-    setText('spofZero',  spofZero);
+    setText('spofValue', spofSole.length + spofNone.length);
+    setText('spofOne',   spofSole.length);
+    setText('spofZero',  spofNone.length);
+    // Stash detail for the hover tooltip — picked up by setupSpofHover().
+    window.__spofDetail = { sole: spofSole, none: spofNone };
+    setupSpofHover();
+}
+
+// Attach hover tooltip on the SPOF dashboard tile once. Reads detail from
+// window.__spofDetail (refreshed each updateStats run) and reuses the
+// .resource-tooltip styling.
+let _spofHoverWired = false;
+function setupSpofHover() {
+    if (_spofHoverWired) return;
+    const card = document.getElementById('spofCard');
+    if (!card) return;
+    _spofHoverWired = true;
+    let timer = null;
+    card.addEventListener('mouseenter', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => showSpofTooltip(card), 250);
+    });
+    card.addEventListener('mouseleave', () => {
+        clearTimeout(timer);
+        hideResourceTooltip();
+    });
+}
+
+function showSpofTooltip(cardElement) {
+    if (!cardElement) return;
+    hideResourceTooltip();
+    const detail = window.__spofDetail || { sole: [], none: [] };
+    if (detail.sole.length === 0 && detail.none.length === 0) return;
+
+    // Cap to keep the tooltip compact (matches resource-card behaviour).
+    const SOLE_MAX = 6;
+    const NONE_MAX = 6;
+    const sole = detail.sole.slice(0, SOLE_MAX);
+    const none = detail.none.slice(0, NONE_MAX);
+    const soleHidden = detail.sole.length - sole.length;
+    const noneHidden = detail.none.length - none.length;
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'resource-tooltip show';
+    tooltip.id = 'active-resource-tooltip';
+
+    let html = '';
+    if (sole.length > 0) {
+        html += '<h5>Sole expert (1 person L4+)</h5><ul>';
+        sole.forEach(s => {
+            html += `<li><span class="skill-name">${escapeHtml(s.skill)}</span><span class="skill-level" style="background: rgba(251, 191, 36, 0.25); color: #fbbf24;">${escapeHtml(s.expert)}</span></li>`;
+        });
+        if (soleHidden > 0) html += `<li style="justify-content:center;font-style:italic;">+${soleHidden} more</li>`;
+        html += '</ul>';
+    }
+    if (none.length > 0) {
+        if (sole.length > 0) html += '<div class="section-divider"></div>';
+        html += '<h5 style="color: var(--danger);">No experts (0 at L4+)</h5><ul>';
+        none.forEach(skillName => {
+            html += `<li><span class="skill-name">${escapeHtml(skillName)}</span><span class="skill-level" style="background: rgba(248, 113, 113, 0.3); color: #f87171;">L4+ gap</span></li>`;
+        });
+        if (noneHidden > 0) html += `<li style="justify-content:center;font-style:italic;">+${noneHidden} more</li>`;
+        html += '</ul>';
+    }
+
+    tooltip.innerHTML = html;
+    document.body.appendChild(tooltip);
+
+    const cardRect = cardElement.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    let left = cardRect.right + 15;
+    let top = cardRect.top;
+    if (left + tooltipRect.width > window.innerWidth) left = cardRect.left - tooltipRect.width - 15;
+    if (top + tooltipRect.height > window.innerHeight) top = window.innerHeight - tooltipRect.height - 10;
+    if (top < 10) top = 10;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
 }
 
 function setText(id, value) {
@@ -2203,7 +2277,7 @@ async function renderSkills() {
     const resultsContainer = document.getElementById('skillsResults');
 
     // Display all skills initially
-    displaySkillCards(data.skills);
+    displaySkillCards(data.skills, data.resources);
 
     // Only add event listeners once
     if (!skillsEventListenersAdded) {
@@ -2215,7 +2289,7 @@ async function renderSkills() {
                 skill.name.toLowerCase().includes(query) ||
                 (skill.skillType && skill.skillType.toLowerCase().includes(query))
             );
-            displaySkillCards(filtered);
+            displaySkillCards(filtered, currentData.resources);
         });
 
         // Event delegation for all button clicks
@@ -2251,7 +2325,7 @@ async function renderSkills() {
     }
 }
 
-function displaySkillCards(skills) {
+function displaySkillCards(skills, resources = []) {
     const resultsContainer = document.getElementById('skillsResults');
 
     if (!skills || skills.length === 0) {
@@ -2264,12 +2338,24 @@ function displaySkillCards(skills) {
         const typeColor = skill.skillType === 'non-technical' ? '#10b981' : '#2563eb';
         const typeBadge = skill.skillType === 'non-technical' ? 'Non-Tech' : 'Tech';
         const safeName = skill.name.replace(/"/g, '&quot;');
+        // Expert (L4+) count at the main-skill level — same definition the
+        // dashboard SPOF tile uses. Only flag main skills that actually have
+        // sub-skills (orphan parents are not actionable).
+        const expertCount = resources.filter(r => r.skills && r.skills[skill.name] >= 4).length;
+        const flagNoExperts = expertCount === 0 && subSkillCount > 0;
+        const noExpertsBadge = flagNoExperts
+            ? `<div class="skill-no-experts-badge" title="No team member is rated L4+ in ${safeName}.">
+                  <span class="spof-icon" aria-hidden="true">⚠</span>
+                  <span class="spof-label">No experts (L4+)</span>
+               </div>`
+            : '';
 
         return `
-            <div class="resource-card" data-skill-id="${skill.id}" style="position: relative;">
+            <div class="resource-card${flagNoExperts ? ' is-no-experts' : ''}" data-skill-id="${skill.id}" style="position: relative;">
                 <button class="delete-skill-btn" data-skill-id="${skill.id}" data-skill-name="${safeName}">×</button>
                 <h4 style="margin: 0 2rem 0.4rem 0;">${skill.name}</h4>
                 <span style="display: inline-block; background: ${typeColor}; color: white; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-bottom: 0.5rem;">${typeBadge}</span>
+                ${noExpertsBadge}
                 <p style="color: var(--text-light); font-size: 0.9rem; margin: 0.25rem 0;"><strong>Weight:</strong> ${skill.weight || 5}/10</p>
                 <p style="color: var(--text-light); font-size: 0.9rem; margin: 0;"><strong>${subSkillCount}</strong> sub-skills</p>
                 <div class="resource-card-actions">
@@ -3221,6 +3307,82 @@ async function renderCustomRadarChart() {
     });
 }
 
+// Suitable Resources panel beneath the Custom Radar chart. Computed live as
+// sub-skill checkboxes toggle: average each resource's rating across the
+// selected sub-skills (missing rating counts as 0 so coverage matters), then
+// rank descending. Re-uses the role accent palette from the rest of the app.
+async function renderRadarResourceList() {
+    const panel = document.getElementById('radarResourcePanel');
+    const list = document.getElementById('radarResourceList');
+    const countEl = document.getElementById('radarResourceCount');
+    if (!panel || !list) return;
+
+    const container = document.getElementById('subSkillCheckboxes');
+    const selected = Array.from(container.querySelectorAll('input.subskill-checkbox:checked'))
+        .map(cb => ({ name: cb.value, category: cb.dataset.category }));
+
+    if (selected.length === 0) {
+        panel.style.display = 'none';
+        list.innerHTML = '';
+        if (countEl) countEl.textContent = '';
+        return;
+    }
+
+    const data = await getData();
+    const pmRoles = new Set(['Project Manager', 'Project Coordinator', 'Senior Project Manager']);
+
+    const scored = (data.resources || []).map(r => {
+        const perSkill = selected.map(sel => {
+            const lvl = (r.subSkills && r.subSkills[sel.category] && r.subSkills[sel.category][sel.name]) || 0;
+            return { name: sel.name, level: lvl };
+        });
+        const sum = perSkill.reduce((a, s) => a + s.level, 0);
+        const avg = sum / selected.length;
+        const coverage = perSkill.filter(s => s.level > 0).length;
+        const proficient = perSkill.filter(s => s.level >= 3).length;
+        return { resource: r, perSkill, avg, sum, coverage, proficient };
+    })
+    .filter(row => row.sum > 0) // only show resources with at least one rating
+    .sort((a, b) => {
+        if (b.avg !== a.avg) return b.avg - a.avg;
+        if (b.coverage !== a.coverage) return b.coverage - a.coverage;
+        return a.resource.name.localeCompare(b.resource.name);
+    });
+
+    panel.style.display = 'block';
+    if (countEl) {
+        countEl.textContent = scored.length === 1
+            ? '1 match'
+            : `${scored.length} matches`;
+    }
+
+    if (scored.length === 0) {
+        list.innerHTML = '<p class="radar-resource-empty">No resources have any of the selected sub-skills yet.</p>';
+        return;
+    }
+
+    list.innerHTML = scored.map(row => {
+        const r = row.resource;
+        const roleClass = pmRoles.has(r.job_role) ? 'role-nontech'
+                       : (r.job_role ? 'role-tech' : '');
+        const chips = row.perSkill.map(s => {
+            const cls = s.level > 0 ? `level-${s.level}` : 'level-empty';
+            return `<span class="radar-rr-chip ${cls}" title="${escapeHtml(s.name)} — L${s.level}">${escapeHtml(s.name)}<span class="lvl">L${s.level}</span></span>`;
+        }).join('');
+        return `
+            <div class="radar-rr-row ${roleClass}">
+                <div class="radar-rr-head">
+                    <span class="radar-rr-name">${escapeHtml(r.name)}</span>
+                    ${r.job_role ? `<span class="radar-rr-role">${escapeHtml(r.job_role)}</span>` : ''}
+                    <span class="radar-rr-score">avg ${row.avg.toFixed(2)}</span>
+                    <span class="radar-rr-meta">${row.coverage}/${selected.length} rated · ${row.proficient} at L3+</span>
+                </div>
+                <div class="radar-rr-chips">${chips}</div>
+            </div>
+        `;
+    }).join('');
+}
+
 function filterSubSkills() {
     const searchInput = document.getElementById('subSkillSearch');
     const searchTerm = searchInput.value.toLowerCase().trim();
@@ -3283,6 +3445,7 @@ function setupCustomChartEventListeners() {
     updateBtn.addEventListener('click', async () => {
         console.log('Update chart button clicked');
         await renderCustomRadarChart();
+        await renderRadarResourceList();
     });
 
     clearBtn.addEventListener('click', () => {
@@ -3300,7 +3463,22 @@ function setupCustomChartEventListeners() {
         const placeholder = document.getElementById('radarPlaceholder');
         if (canvas) canvas.style.display = 'none';
         if (placeholder) placeholder.style.display = 'flex';
+        // Clear the suitable-resources panel too
+        renderRadarResourceList();
     });
+
+    // Live update of the suitable-resources panel as sub-skill boxes toggle.
+    // Delegated so it covers dynamically-rendered category trees, debounced
+    // because rapid select-all toggles can fire many events at once.
+    const checkboxesContainer = document.getElementById('subSkillCheckboxes');
+    if (checkboxesContainer) {
+        const debouncedRender = debounce(() => renderRadarResourceList(), 120);
+        checkboxesContainer.addEventListener('change', (e) => {
+            if (e.target && e.target.matches('input.subskill-checkbox, input.select-all-checkbox')) {
+                debouncedRender();
+            }
+        });
+    }
 
     // Setup search filter (debounced)
     searchInput.addEventListener('input', debounce(() => {
@@ -4665,6 +4843,221 @@ async function runProjectMatch() {
         out.innerHTML = `<p class="empty">Match failed: ${escapeHtml(err.message)}</p>`;
     }
 }
+
+// ==================== FLOATING CHAT WIDGET ====================
+
+const Chat = {
+    bound: false,
+    history: [],   // [{role:'user'|'assistant', content}]
+    busy: false,
+    keyChecked: false,
+    keyConfigured: false,
+
+    init() {
+        if (this.bound) return;
+        this.bound = true;
+        const launcher = document.getElementById('chatLauncher');
+        const closeBtn = document.getElementById('chatCloseBtn');
+        const resetBtn = document.getElementById('chatResetBtn');
+        const form = document.getElementById('chatForm');
+        const input = document.getElementById('chatInput');
+        if (!launcher || !closeBtn || !form || !input) return;
+
+        launcher.addEventListener('click', () => this.open());
+        closeBtn.addEventListener('click', () => this.close());
+        resetBtn.addEventListener('click', () => this.reset());
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.send();
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.send();
+            }
+        });
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        });
+
+        this.renderEmpty();
+    },
+
+    async open() {
+        const widget = document.getElementById('chatWidget');
+        const panel = document.getElementById('chatPanel');
+        widget.dataset.open = 'true';
+        panel.hidden = false;
+        setTimeout(() => document.getElementById('chatInput')?.focus(), 50);
+        // Always re-check key status when opening — user may have just configured it.
+        await this.checkKey();
+        if (this.history.length === 0) this.renderEmpty();
+    },
+
+    close() {
+        const widget = document.getElementById('chatWidget');
+        const panel = document.getElementById('chatPanel');
+        widget.dataset.open = 'false';
+        panel.hidden = true;
+    },
+
+    reset() {
+        this.history = [];
+        this.renderEmpty();
+    },
+
+    async checkKey() {
+        try {
+            const r = await fetch(`${API_BASE}/settings/api-keys`);
+            const j = await r.json();
+            this.keyConfigured = !!(j && j.data && j.data.anthropic_api_key && j.data.anthropic_api_key.configured);
+        } catch {
+            this.keyConfigured = false;
+        }
+        this.keyChecked = true;
+    },
+
+    renderEmpty() {
+        const body = document.getElementById('chatBody');
+        if (!body) return;
+        if (this.keyChecked && !this.keyConfigured) {
+            body.innerHTML = `
+                <div class="chat-msg chat-msg-error">
+                    <strong>Add an API key to get chat features.</strong><br>
+                    No Anthropic API key is configured. Go to <a href="#" id="chatGotoSettings">Settings → AI / API Keys</a> to add one, then come back here.
+                </div>`;
+            const link = document.getElementById('chatGotoSettings');
+            if (link) link.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.close();
+                const settingsBtn = document.querySelector('.nav-btn[data-view="management"]');
+                if (settingsBtn) settingsBtn.click();
+            });
+            return;
+        }
+        const suggestions = [
+            'Who are the experts in Cisco ISE?',
+            'Which certifications expire in the next 90 days?',
+            'Suggest someone for a Kubernetes + Azure project.',
+            'Where are our biggest skill gaps?',
+        ];
+        body.innerHTML = `
+            <div class="chat-empty">
+                <strong>Ask me anything about the team.</strong><br>
+                I can answer questions about resources, skills, sub-skills, certifications, training, and project staffing.
+                <div class="chat-suggestions">
+                    ${suggestions.map(s => `<button type="button" class="chat-suggest-btn">${escapeHtml(s)}</button>`).join('')}
+                </div>
+            </div>`;
+        body.querySelectorAll('.chat-suggest-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById('chatInput');
+                input.value = btn.textContent;
+                this.send();
+            });
+        });
+    },
+
+    renderHistory() {
+        const body = document.getElementById('chatBody');
+        if (!body) return;
+        body.innerHTML = this.history.map(m => `
+            <div class="chat-msg chat-msg-${m.role === 'user' ? 'user' : 'bot'}">${escapeHtml(m.content)}</div>
+        `).join('');
+        body.scrollTop = body.scrollHeight;
+    },
+
+    showTyping() {
+        const body = document.getElementById('chatBody');
+        if (!body) return;
+        const el = document.createElement('div');
+        el.className = 'chat-typing';
+        el.id = 'chatTyping';
+        el.innerHTML = '<span></span><span></span><span></span>';
+        body.appendChild(el);
+        body.scrollTop = body.scrollHeight;
+    },
+
+    hideTyping() {
+        document.getElementById('chatTyping')?.remove();
+    },
+
+    showError(message, isMissingKey = false) {
+        const body = document.getElementById('chatBody');
+        if (!body) return;
+        const el = document.createElement('div');
+        el.className = 'chat-msg chat-msg-error';
+        if (isMissingKey) {
+            el.innerHTML = `<strong>Add an API key to get chat features.</strong><br>
+                ${escapeHtml(message)} Go to <a href="#" class="chat-goto-settings">Settings → AI / API Keys</a> to add one.`;
+        } else {
+            el.textContent = message;
+        }
+        body.appendChild(el);
+        body.scrollTop = body.scrollHeight;
+        el.querySelector('.chat-goto-settings')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.close();
+            document.querySelector('.nav-btn[data-view="management"]')?.click();
+        });
+    },
+
+    async send() {
+        if (this.busy) return;
+        const input = document.getElementById('chatInput');
+        const text = (input.value || '').trim();
+        if (!text) return;
+
+        if (this.keyChecked && !this.keyConfigured) {
+            this.showError('No Anthropic API key configured.', true);
+            return;
+        }
+
+        input.value = '';
+        input.style.height = 'auto';
+        this.history.push({ role: 'user', content: text });
+        this.renderHistory();
+        this.showTyping();
+        this.busy = true;
+        document.getElementById('chatSendBtn').disabled = true;
+
+        try {
+            const r = await fetch(`${API_BASE}/insights/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: this.history }),
+            });
+            const j = await r.json().catch(() => ({}));
+            this.hideTyping();
+
+            if (r.status === 503) {
+                // Key was revoked or never set — flag and show prominent prompt.
+                this.keyConfigured = false;
+                this.keyChecked = true;
+                this.showError(j.error || 'No Anthropic API key configured.', true);
+                return;
+            }
+            if (!r.ok || !j.success) {
+                this.showError(j.error || `Request failed (HTTP ${r.status})`);
+                return;
+            }
+            const reply = (j.data && j.data.reply) || '(no reply)';
+            this.history.push({ role: 'assistant', content: reply });
+            this.renderHistory();
+        } catch (err) {
+            this.hideTyping();
+            this.showError(`Network error: ${err.message}`);
+        } finally {
+            this.busy = false;
+            document.getElementById('chatSendBtn').disabled = false;
+            document.getElementById('chatInput')?.focus();
+        }
+    },
+};
+
+document.addEventListener('DOMContentLoaded', () => Chat.init());
 
 // ==================== UTILITIES ====================
 

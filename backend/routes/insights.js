@@ -613,4 +613,162 @@ Be direct and concrete.`;
     }
 });
 
+/**
+ * POST /api/insights/chat
+ * Body: { messages: [{ role: 'user'|'assistant', content: string }, ...] }
+ * Sends the team/skills/training snapshot plus the conversation to Claude and
+ * returns the assistant's next reply. Used by the floating chat widget.
+ * Returns: { reply, model, usage } or 503 if no API key.
+ */
+router.post('/chat', async (req, res) => {
+    try {
+        const apiKey = await getApiKey('anthropic_api_key');
+        if (!apiKey) {
+            return res.status(503).json({
+                success: false,
+                error: 'No Anthropic API key configured. Set one in Settings → AI / API Keys.',
+            });
+        }
+
+        const messages = Array.isArray(req.body && req.body.messages) ? req.body.messages : [];
+        const cleanMessages = messages
+            .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+            .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }))
+            .slice(-20);
+
+        if (cleanMessages.length === 0 || cleanMessages[cleanMessages.length - 1].role !== 'user') {
+            return res.status(400).json({ success: false, error: 'Conversation must end with a user message.' });
+        }
+
+        // Snapshot the data the assistant can reason about.
+        const [catalogueRows, subSkillRows, trainingsRows] = await Promise.all([
+            db.query(`
+                SELECT ms.name AS main_name, ms.weight, ms.skill_type,
+                       ARRAY_AGG(ss.name ORDER BY ss.name) FILTER (WHERE ss.name IS NOT NULL) AS subs
+                FROM main_skills ms
+                LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+                GROUP BY ms.id
+                ORDER BY ms.skill_type, ms.name
+            `),
+            // Raw per-sub-skill ratings (level > 0 only) so the assistant can
+            // answer questions like "who's an expert in Cisco ISE specifically?"
+            db.query(`
+                SELECT r.id AS resource_id, r.name AS resource_name, r.job_role,
+                       ms.name AS main_skill, ms.skill_type,
+                       ss.name AS sub_skill, rss.level
+                FROM resource_sub_skills rss
+                JOIN sub_skills ss ON ss.id = rss.sub_skill_id
+                JOIN main_skills ms ON ms.id = ss.main_skill_id
+                JOIN resources r ON r.id = rss.resource_id
+                WHERE rss.level > 0
+                ORDER BY r.name, ms.skill_type, ms.name, ss.name
+            `),
+            db.query(`
+                SELECT r.name AS resource_name, t.name AS training_name, t.code, t.vendor, t.category,
+                       rt.status, rt.target_date, rt.completed_date, rt.expiry_date
+                FROM resource_trainings rt
+                JOIN resources r ON r.id = rt.resource_id
+                JOIN trainings t ON t.id = rt.training_id
+                ORDER BY r.name, t.name
+            `).catch(() => ({ rows: [] })),
+        ]);
+
+        const catalogueText = catalogueRows.rows.map(r =>
+            `- ${r.main_name} (${r.skill_type}, weight ${r.weight}): ${(r.subs || []).join(', ') || '—'}`
+        ).join('\n');
+
+        // Group sub-skill ratings by person → main skill → list of "sub=level"
+        // and compute the rounded main-skill average per (person, main_skill).
+        const byPerson = new Map();
+        for (const row of subSkillRows.rows) {
+            if (!byPerson.has(row.resource_name)) {
+                byPerson.set(row.resource_name, { role: row.job_role, mains: new Map() });
+            }
+            const person = byPerson.get(row.resource_name);
+            if (!person.mains.has(row.main_skill)) {
+                person.mains.set(row.main_skill, { type: row.skill_type, subs: [] });
+            }
+            person.mains.get(row.main_skill).subs.push({ name: row.sub_skill, level: Number(row.level) });
+        }
+        const teamText = Array.from(byPerson.entries()).map(([name, info]) => {
+            if (info.mains.size === 0) return `- ${name} (${info.role || 'unknown role'}): no ratings`;
+            const techLines = [];
+            const ntLines = [];
+            for (const [main, m] of info.mains.entries()) {
+                const avg = Math.round(m.subs.reduce((a, b) => a + b.level, 0) / m.subs.length);
+                const subStr = m.subs.map(s => `${s.name}=${s.level}`).join(', ');
+                const line = `    ${main} (main avg ${avg}): ${subStr}`;
+                if (m.type === 'non-technical') ntLines.push(line);
+                else techLines.push(line);
+            }
+            const sections = [];
+            if (techLines.length) sections.push('  Technical:\n' + techLines.join('\n'));
+            if (ntLines.length) sections.push('  Non-technical:\n' + ntLines.join('\n'));
+            return `- ${name} (${info.role || 'unknown role'}):\n${sections.join('\n')}`;
+        }).join('\n');
+
+        const trainingsText = trainingsRows.rows.length
+            ? trainingsRows.rows.map(t => {
+                const parts = [`${t.resource_name} → ${t.training_name}${t.code ? ` (${t.code})` : ''}`, t.status];
+                if (t.target_date) parts.push(`target ${String(t.target_date).slice(0, 10)}`);
+                if (t.completed_date) parts.push(`done ${String(t.completed_date).slice(0, 10)}`);
+                if (t.expiry_date) parts.push(`expires ${String(t.expiry_date).slice(0, 10)}`);
+                return `- ${parts.join(', ')}`;
+            }).join('\n')
+            : '(no training assignments)';
+
+        const systemPrompt = `You are the in-app assistant for a "Project Team Skills Matrix" web app. Answer the user's questions about the team, resources, skills, sub-skills, certifications, training, and project staffing. Use ONLY the snapshot below as ground truth. If the answer isn't in the data, say so plainly rather than guessing.
+
+Skill levels: 0=none, 1=elementary, 2=basic, 3=proficient, 4=advanced, 5=expert. A "main skill" level is the rounded average of its sub-skill ratings — the snapshot below shows both.
+
+Be concise and direct. Prefer short paragraphs or compact bullet lists. When a user asks about a specific sub-skill (e.g. "Cisco ISE", "BGP", "Kubernetes") look at the sub-skill ratings under each person's main-skill group — do NOT fall back to the main-skill average. When naming people, give concrete levels (e.g. "Steven Johnston — Cisco ISE L5"). Apply your own domain knowledge for synonyms (e.g. "dot1x" → "802.1x", "K8s" → "Kubernetes") when mapping a user's words to catalogue entries. Today's date is ${new Date().toISOString().slice(0, 10)}.
+
+=== SKILL CATALOGUE ===
+${catalogueText || '(empty)'}
+
+=== TEAM (each person's sub-skill ratings grouped by main skill; only level > 0 shown) ===
+${teamText || '(empty)'}
+
+=== TRAINING & CERTIFICATION ASSIGNMENTS ===
+${trainingsText}`;
+
+        const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+                model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+                max_tokens: 800,
+                system: systemPrompt,
+                messages: cleanMessages,
+            }),
+        });
+        if (!aiRes.ok) {
+            const errBody = await aiRes.text();
+            console.error('Anthropic API error:', aiRes.status, errBody);
+            return res.status(502).json({
+                success: false,
+                error: `Anthropic API returned ${aiRes.status}: ${errBody.slice(0, 200)}`,
+            });
+        }
+        const aiBody = await aiRes.json();
+        const reply = (aiBody.content || [])
+            .filter(c => c.type === 'text')
+            .map(c => c.text)
+            .join('\n')
+            .trim();
+
+        res.json({
+            success: true,
+            data: { reply, model: aiBody.model, usage: aiBody.usage },
+        });
+    } catch (err) {
+        console.error('chat error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

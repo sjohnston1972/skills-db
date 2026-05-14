@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=86">
+    <link rel="stylesheet" href="styles.css?v=91">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -111,7 +111,7 @@
                     <div class="metric-label">Trainings In&nbsp;Progress</div>
                     <small class="metric-hint" id="trainingHint">— planned, — achieved</small>
                 </div>
-                <div class="metric-card metric-card--warning" id="spofCard" title="Main skills where only one team member is rated L4+ (or where no-one is)">
+                <div class="metric-card metric-card--warning" id="spofCard">
                     <div class="metric-value" id="spofValue">0</div>
                     <div class="metric-label">Single&nbsp;Points of&nbsp;Failure</div>
                     <small class="metric-hint metric-split">
@@ -206,6 +206,16 @@
                         <span>Select skills to populate the chart</span>
                     </div>
                     <canvas id="customRadarChart" style="display:none;"></canvas>
+
+                    <!-- Suitable Resources: ranked by avg level across the
+                         selected sub-skills. Updates live as boxes toggle. -->
+                    <div class="radar-resource-panel" id="radarResourcePanel" style="display:none;">
+                        <div class="radar-resource-header">
+                            <h4>Suitable Resources</h4>
+                            <span class="radar-resource-count" id="radarResourceCount"></span>
+                        </div>
+                        <div id="radarResourceList" class="radar-resource-list"></div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -797,6 +807,33 @@
     </footer>
 
     <div id="toastContainer"></div>
-    <script src="script.js?v=117"></script>
+
+    <!-- Floating Chat Widget -->
+    <div id="chatWidget" class="chat-widget" data-open="false">
+        <button id="chatLauncher" class="chat-launcher" aria-label="Open assistant" title="Ask the assistant">
+            <span class="chat-launcher-icon" aria-hidden="true">&#x1F4AC;</span>
+            <span class="chat-launcher-label">Ask</span>
+        </button>
+
+        <div class="chat-panel" id="chatPanel" hidden>
+            <div class="chat-header">
+                <div class="chat-header-title">
+                    <span class="chat-header-dot"></span>
+                    <strong>Skills Matrix Assistant</strong>
+                </div>
+                <div class="chat-header-actions">
+                    <button class="chat-icon-btn" id="chatResetBtn" title="Reset conversation" aria-label="Reset conversation">&#x21BB;</button>
+                    <button class="chat-icon-btn" id="chatCloseBtn" title="Close" aria-label="Close">&times;</button>
+                </div>
+            </div>
+            <div class="chat-body" id="chatBody"></div>
+            <form class="chat-input-row" id="chatForm" autocomplete="off">
+                <textarea id="chatInput" rows="1" placeholder="Ask about resources, skills, certifications…" maxlength="2000"></textarea>
+                <button type="submit" class="chat-send-btn" id="chatSendBtn" aria-label="Send" title="Send">&#x27A4;</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js?v=121"></script>
 </body>
 </html>
