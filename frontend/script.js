@@ -4284,11 +4284,19 @@ async function renderCertifications() {
         if (bucket[a.status] !== undefined) bucket[a.status] += 1;
     });
 
-    // Pick top 12 by total assignments
+    // Show every training that has at least one assignment, so an individual's
+    // less-common certs (e.g. a single Meraki Solutions Specialist) still appear.
+    // Stable sort: total desc, then name asc — ties don't shuffle between renders.
     const entries = Array.from(byTraining.entries())
         .map(([name, c]) => ({ name, ...c, total: c.planned + c['in-progress'] + c.achieved + c.expired }))
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 12);
+        .sort((a, b) => (b.total - a.total) || a.name.localeCompare(b.name));
+
+    // Grow the chart container so horizontal bars stay readable as the catalogue grows.
+    const chartHost = canvas.parentElement;
+    if (chartHost) {
+        const target = Math.max(280, entries.length * 32 + 80);
+        chartHost.style.height = target + 'px';
+    }
 
     if (certStatusChart) certStatusChart.destroy();
     if (entries.length === 0) {
@@ -4613,6 +4621,7 @@ async function confirmDeleteAssignment(id) {
         await TrainingsAPI.deleteAssignment(id);
         await loadAssignmentsForCurrent();
         renderTrainingAssignments();
+        renderCertifications().catch(() => {});
         showToast('Unassigned', 'success');
     } catch (err) {
         showToast(`Unassign failed: ${err.message}`, 'error');
@@ -4683,6 +4692,7 @@ async function saveTrainingAssignment() {
         }
         await loadAssignmentsForCurrent();
         renderTrainingAssignments();
+        renderCertifications().catch(() => {});
         closeTrainingAssignModal();
         showToast(trainingState.editingAssignmentId ? 'Assignment updated' : 'Assignment created', 'success');
     } catch (err) {
