@@ -3270,12 +3270,12 @@ footer {
 .training-card-popover {
     position: absolute;
     max-width: 280px;
-    background: var(--bg-elevated, #1f2230);
-    color: var(--text-primary, #e5e7eb);
-    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.75rem 0.9rem;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+    box-shadow: 0 12px 32px var(--shadow);
     z-index: 1000;
     font-size: 0.85rem;
     line-height: 1.35;
@@ -3283,7 +3283,7 @@ footer {
 }
 .training-card-popover .empty {
     margin: 0;
-    color: var(--text-secondary, #9aa3b2);
+    color: var(--text-secondary);
     font-style: italic;
 }
 .training-card-popover .tcp-section { margin-bottom: 0.6rem; }
@@ -3293,14 +3293,14 @@ footer {
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--text-secondary, #9aa3b2);
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 0.4rem;
 }
 .training-card-popover .tcp-count {
-    background: rgba(255,255,255,0.08);
-    color: var(--text-primary, #e5e7eb);
+    background: var(--border);
+    color: var(--text-primary);
     border-radius: 999px;
     padding: 0 0.4rem;
     font-size: 0.7rem;
@@ -3312,10 +3312,10 @@ footer {
     padding: 0;
 }
 .training-card-popover li { padding: 0.1rem 0; }
-.training-card-popover .tcp-achieved h5    { color: rgb(34, 197, 94); }
-.training-card-popover .tcp-in-progress h5 { color: rgb(96, 165, 250); }
-.training-card-popover .tcp-planned h5     { color: rgb(160, 174, 192); }
-.training-card-popover .tcp-expired h5     { color: rgb(239, 68, 68); }
+.training-card-popover .tcp-achieved h5    { color: #16a34a; }
+.training-card-popover .tcp-in-progress h5 { color: #2563eb; }
+.training-card-popover .tcp-planned h5     { color: var(--text-secondary); }
+.training-card-popover .tcp-expired h5     { color: #dc2626; }
 
 /* ---------- Status filter pills (assignments sub-tab) ---------- */
 .training-status-filter {
@@ -3326,15 +3326,15 @@ footer {
     margin-bottom: 1rem;
 }
 .training-status-filter .tsf-label {
-    color: var(--text-secondary, #9aa3b2);
+    color: var(--text-secondary);
     font-size: 0.85rem;
     margin-right: 0.2rem;
 }
 .tsf-pill {
     appearance: none;
-    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border: 1px solid var(--border);
     background: transparent;
-    color: var(--text-secondary, #9aa3b2);
+    color: var(--text-secondary);
     padding: 0.3rem 0.75rem;
     border-radius: 999px;
     font-size: 0.85rem;
@@ -3344,7 +3344,7 @@ footer {
 }
 .tsf-pill:hover { opacity: 0.85; }
 .tsf-pill.is-on { opacity: 1; }
-.tsf-pill.is-on[data-status="achieved"]    { background: rgba(22, 163, 74, 0.22); color: rgb(34, 197, 94); border-color: rgba(34, 197, 94, 0.5); }
-.tsf-pill.is-on[data-status="in-progress"] { background: rgba(37, 99, 235, 0.22); color: rgb(96, 165, 250); border-color: rgba(96, 165, 250, 0.5); }
-.tsf-pill.is-on[data-status="planned"]     { background: rgba(160, 174, 192, 0.22); color: rgb(203, 213, 225); border-color: rgba(203, 213, 225, 0.5); }
-.tsf-pill.is-on[data-status="expired"]     { background: rgba(220, 38, 38, 0.22); color: rgb(239, 68, 68); border-color: rgba(239, 68, 68, 0.5); }
+.tsf-pill.is-on[data-status="achieved"]    { background: rgba(22, 163, 74, 0.18); color: #16a34a; border-color: rgba(22, 163, 74, 0.5); }
+.tsf-pill.is-on[data-status="in-progress"] { background: rgba(37, 99, 235, 0.18); color: #2563eb; border-color: rgba(37, 99, 235, 0.5); }
+.tsf-pill.is-on[data-status="planned"]     { background: rgba(100, 116, 139, 0.18); color: var(--text-secondary); border-color: rgba(100, 116, 139, 0.5); }
+.tsf-pill.is-on[data-status="expired"]     { background: rgba(220, 38, 38, 0.18); color: #dc2626; border-color: rgba(220, 38, 38, 0.5); }
