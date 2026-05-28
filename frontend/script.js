@@ -4282,11 +4282,16 @@ async function renderCertifications() {
         return;
     }
 
-    // Group by training_name, count statuses
+    // Group by training_name, count statuses, and record one training_id per
+    // bucket so tooltip callbacks can look the row up in byTrainingId.
     const byTraining = new Map();
     assignments.forEach(a => {
         const key = a.training_name;
-        if (!byTraining.has(key)) byTraining.set(key, { planned: 0, 'in-progress': 0, achieved: 0, expired: 0, code: a.training_code, vendor: a.vendor });
+        if (!byTraining.has(key)) byTraining.set(key, {
+            id: a.training_id,
+            planned: 0, 'in-progress': 0, achieved: 0, expired: 0,
+            code: a.training_code, vendor: a.vendor,
+        });
         const bucket = byTraining.get(key);
         if (bucket[a.status] !== undefined) bucket[a.status] += 1;
     });
@@ -4338,7 +4343,36 @@ async function renderCertifications() {
                     x: { stacked: true, ticks: { precision: 0 } },
                     y: { stacked: true },
                 },
-                plugins: { legend: { position: 'bottom' } },
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            title(items) {
+                                if (!items.length) return '';
+                                const { label, dataset } = items[0];
+                                // dataset.label = 'Achieved' | 'In progress' | 'Planned' | 'Expired'
+                                const count = items[0].parsed.x;
+                                return `${label} · ${dataset.label} (${count})`;
+                            },
+                            label() {
+                                // Suppress the default "Achieved: 5" line — title carries the count.
+                                return '';
+                            },
+                            afterBody(items) {
+                                if (!items.length) return [];
+                                const { dataIndex, datasetIndex } = items[0];
+                                const statuses = ['achieved', 'in-progress', 'planned', 'expired'];
+                                const status = statuses[datasetIndex];
+                                const entry = entries[dataIndex];
+                                const names = (trainingState.byTrainingId[entry.id] || {})[status] || [];
+                                if (!names.length) return ['(no resources)'];
+                                const MAX = 25;
+                                if (names.length <= MAX) return names.map(n => '• ' + n);
+                                return [...names.slice(0, MAX).map(n => '• ' + n), `…and ${names.length - MAX} more`];
+                            },
+                        },
+                    },
+                },
             },
         });
     }
