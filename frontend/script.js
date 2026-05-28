@@ -4253,6 +4253,21 @@ function bindTrainingListeners() {
 
     // Delegated click handling on catalogue + assignments lists
     document.getElementById('trainingCatalogueList').addEventListener('click', onCatalogueClick);
+    const cat = document.getElementById('trainingCatalogueList');
+    cat.addEventListener('mouseover', (e) => {
+        const card = e.target.closest('.training-card[data-training-id]');
+        if (!card) return;
+        if (cat._lastHoverCard === card) return;
+        cat._lastHoverCard = card;
+        showTrainingCardPopover(card);
+    });
+    cat.addEventListener('mouseout', (e) => {
+        const card = e.target.closest('.training-card[data-training-id]');
+        if (!card) return;
+        if (e.relatedTarget && card.contains(e.relatedTarget)) return;
+        cat._lastHoverCard = null;
+        hideTrainingCardPopover();
+    });
     document.getElementById('trainingAssignmentsList').addEventListener('click', onAssignmentsClick);
 }
 
@@ -4432,7 +4447,7 @@ function renderTrainingCatalogue() {
             <h3>${escapeHtml(vendor)} <span class="badge">${ts.length}</span></h3>
             <div class="training-cards">
                 ${ts.map(t => `
-                    <div class="training-card" data-id="${t.id}">
+                    <div class="training-card" data-id="${t.id}" data-training-id="${t.id}">
                         <div class="training-card-head">
                             <h4>${escapeHtml(t.name)}</h4>
                             ${t.code ? `<span class="training-code">${escapeHtml(t.code)}</span>` : ''}
@@ -4451,6 +4466,66 @@ function renderTrainingCatalogue() {
             </div>
         </section>
     `).join('');
+}
+
+// One reusable popover node, lazily created and appended to <body>.
+let trainingCardPopoverEl = null;
+function getTrainingCardPopover() {
+    if (trainingCardPopoverEl) return trainingCardPopoverEl;
+    const el = document.createElement('div');
+    el.className = 'training-card-popover';
+    el.setAttribute('role', 'tooltip');
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    trainingCardPopoverEl = el;
+    return el;
+}
+
+function buildTrainingCardPopoverHtml(tid) {
+    const buckets = trainingState.byTrainingId[tid];
+    if (!buckets) return '<p class="empty">No one has been assigned this training yet.</p>';
+
+    const order = [
+        ['achieved',    'Achieved'],
+        ['in-progress', 'In progress'],
+        ['planned',     'Planned'],
+        ['expired',     'Expired'],
+    ];
+    const sections = order
+        .filter(([k]) => (buckets[k] || []).length > 0)
+        .map(([k, label]) => `
+            <div class="tcp-section tcp-${k}">
+                <h5>${label} <span class="tcp-count">${buckets[k].length}</span></h5>
+                <ul>${buckets[k].map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>
+            </div>
+        `).join('');
+
+    if (!sections) return '<p class="empty">No one has been assigned this training yet.</p>';
+    return sections;
+}
+
+function showTrainingCardPopover(cardEl) {
+    const tid = parseInt(cardEl.dataset.trainingId, 10);
+    if (!Number.isFinite(tid)) return;
+    const pop = getTrainingCardPopover();
+    pop.innerHTML = buildTrainingCardPopoverHtml(tid);
+    pop.style.display = 'block';
+
+    const r = cardEl.getBoundingClientRect();
+    const popW = 280;          // matches CSS max-width
+    const margin = 8;
+    let left = r.right + margin;
+    let top = r.top;
+    if (left + popW > window.innerWidth - margin) {
+        left = Math.max(margin, Math.min(r.left, window.innerWidth - popW - margin));
+        top = r.bottom + margin;
+    }
+    pop.style.left = (left + window.scrollX) + 'px';
+    pop.style.top  = (top  + window.scrollY) + 'px';
+}
+
+function hideTrainingCardPopover() {
+    if (trainingCardPopoverEl) trainingCardPopoverEl.style.display = 'none';
 }
 
 function onCatalogueClick(e) {
