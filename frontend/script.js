@@ -4190,6 +4190,10 @@ let trainingState = {
     editingTrainingId: null,
     editingAssignmentId: null,
     catalogueSearch: '',
+    // --- NEW (shared aggregation for filter / chart tooltip / catalogue popover) ---
+    allAssignments: [],            // raw rows from /trainings/assignments/all
+    byTrainingId: {},              // { [tid]: { achieved: [names], 'in-progress': [], planned: [], expired: [] } }
+    statusFilter: new Set(['planned', 'in-progress', 'achieved', 'expired']),
 };
 let trainingListenersBound = false;
 
@@ -4204,7 +4208,10 @@ async function renderTraining() {
         select.value = trainingState.assignmentsResourceId || '';
     }
     bindTrainingListeners();
-    await loadAssignmentsForCurrent();
+    await Promise.all([
+        loadAssignmentsForCurrent(),
+        loadAllAssignmentsForOverview(),
+    ]);
     renderTrainingCatalogue();
     renderTrainingAssignments();
     applyTrainingTabState();
@@ -4430,10 +4437,13 @@ async function confirmDeleteTraining(id) {
     try {
         await TrainingsAPI.delete(id);
         trainingState.catalogue = trainingState.catalogue.filter(t => t.id !== id);
-        renderTrainingCatalogue();
-        // Refresh current resource's assignments — one may have just disappeared
+        // Refresh current resource's assignments + the team-wide overview —
+        // a delete cascades to resource_trainings.
         await loadAssignmentsForCurrent();
+        await loadAllAssignmentsForOverview();
+        renderTrainingCatalogue();
         renderTrainingAssignments();
+        renderCertifications().catch(() => {});
         showToast(`Deleted "${item.name}"`, 'success');
     } catch (err) {
         showToast(`Delete failed: ${err.message}`, 'error');
@@ -4507,6 +4517,38 @@ async function saveTrainingEdit() {
         showToast(trainingState.editingTrainingId ? 'Training updated' : 'Training added', 'success');
     } catch (err) {
         showToast(`Save failed: ${err.message}`, 'error');
+    }
+}
+
+// Build the trainingId → { status: [resource_name, ...] } lookup used by the
+// status-filter pills, the chart tooltip, and the catalogue card popover.
+function buildByTrainingId(rows) {
+    const out = {};
+    for (const r of rows) {
+        const bucket = out[r.training_id] || (out[r.training_id] = {
+            achieved: [], 'in-progress': [], planned: [], expired: [],
+        });
+        if (bucket[r.status]) bucket[r.status].push(r.resource_name);
+    }
+    // Sort names alphabetically within each bucket for stable display.
+    for (const tid of Object.keys(out)) {
+        for (const k of Object.keys(out[tid])) {
+            out[tid][k].sort((a, b) => a.localeCompare(b));
+        }
+    }
+    return out;
+}
+
+// Always fetches the full team-wide assignment list (independent of the
+// per-resource filter on the Assignments sub-tab). Populates trainingState
+// fields used by the cert chart tooltip and catalogue card popover.
+async function loadAllAssignmentsForOverview() {
+    try {
+        trainingState.allAssignments = await TrainingsAPI.assignmentsAll();
+        trainingState.byTrainingId = buildByTrainingId(trainingState.allAssignments);
+    } catch (err) {
+        console.warn('loadAllAssignmentsForOverview failed:', err);
+        // Keep previous values so existing tooltips/popovers still work.
     }
 }
 
@@ -4620,6 +4662,7 @@ async function confirmDeleteAssignment(id) {
     try {
         await TrainingsAPI.deleteAssignment(id);
         await loadAssignmentsForCurrent();
+        await loadAllAssignmentsForOverview();
         renderTrainingAssignments();
         renderCertifications().catch(() => {});
         showToast('Unassigned', 'success');
@@ -4691,6 +4734,7 @@ async function saveTrainingAssignment() {
             });
         }
         await loadAssignmentsForCurrent();
+        await loadAllAssignmentsForOverview();
         renderTrainingAssignments();
         renderCertifications().catch(() => {});
         closeTrainingAssignModal();
