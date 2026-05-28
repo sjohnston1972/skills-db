@@ -4304,12 +4304,20 @@ async function renderCertifications() {
     const canvas = document.getElementById('certStatusChart');
     if (!canvas || !list) return;
 
-    let assignments = [];
-    try {
-        assignments = await TrainingsAPI.assignmentsAll();
-    } catch (err) {
-        list.innerHTML = `<p class="empty">Could not load assignments: ${err.message}</p>`;
-        return;
+    // Prefer the shared cache (populated by loadAllAssignmentsForOverview); fall
+    // back to a direct fetch when this function is called before the shared
+    // loader has ever run. The fallback also writes back into trainingState so
+    // the chart and the catalogue popover / pill filter stay coherent.
+    let assignments = trainingState.allAssignments;
+    if (!assignments || !assignments.length) {
+        try {
+            assignments = await TrainingsAPI.assignmentsAll();
+            trainingState.allAssignments = assignments;
+            trainingState.byTrainingId = buildByTrainingId(assignments);
+        } catch (err) {
+            list.innerHTML = `<p class="empty">Could not load assignments: ${err.message}</p>`;
+            return;
+        }
     }
 
     // Group by training_name, count statuses, and record one training_id per
