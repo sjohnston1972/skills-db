@@ -4466,6 +4466,12 @@ function renderTrainingCatalogue() {
             </div>
         </section>
     `).join('');
+
+    // After re-rendering, the previously hovered card may be detached.
+    // Clear stale popover state so it doesn't linger on screen.
+    hideTrainingCardPopover();
+    const _cat = document.getElementById('trainingCatalogueList');
+    if (_cat) _cat._lastHoverCard = null;
 }
 
 // One reusable popover node, lazily created and appended to <body>.
@@ -4517,8 +4523,15 @@ function showTrainingCardPopover(cardEl) {
     let left = r.right + margin;
     let top = r.top;
     if (left + popW > window.innerWidth - margin) {
+        // No room on the right — place below.
         left = Math.max(margin, Math.min(r.left, window.innerWidth - popW - margin));
         top = r.bottom + margin;
+    }
+    // Clamp to bottom edge — measure rendered height (offsetHeight is reliable
+    // once display:block has been applied and innerHTML is set).
+    const popH = pop.offsetHeight;
+    if (top + popH > window.innerHeight - margin) {
+        top = Math.max(margin, window.innerHeight - popH - margin);
     }
     pop.style.left = (left + window.scrollX) + 'px';
     pop.style.top  = (top  + window.scrollY) + 'px';

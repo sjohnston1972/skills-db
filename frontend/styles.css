@@ -3270,8 +3270,6 @@ footer {
 .training-card-popover {
     position: absolute;
     max-width: 280px;
-    max-height: 360px;
-    overflow-y: auto;
     background: var(--bg-elevated, #1f2230);
     color: var(--text-primary, #e5e7eb);
     border: 1px solid var(--border-color, rgba(255,255,255,0.08));
