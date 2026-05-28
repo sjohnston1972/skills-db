@@ -3316,3 +3316,35 @@ footer {
 .training-card-popover .tcp-in-progress h5 { color: rgb(96, 165, 250); }
 .training-card-popover .tcp-planned h5     { color: rgb(160, 174, 192); }
 .training-card-popover .tcp-expired h5     { color: rgb(239, 68, 68); }
+
+/* ---------- Status filter pills (assignments sub-tab) ---------- */
+.training-status-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+.training-status-filter .tsf-label {
+    color: var(--text-secondary, #9aa3b2);
+    font-size: 0.85rem;
+    margin-right: 0.2rem;
+}
+.tsf-pill {
+    appearance: none;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    background: transparent;
+    color: var(--text-secondary, #9aa3b2);
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
+    opacity: 0.55;
+}
+.tsf-pill:hover { opacity: 0.85; }
+.tsf-pill.is-on { opacity: 1; }
+.tsf-pill.is-on[data-status="achieved"]    { background: rgba(22, 163, 74, 0.22); color: rgb(34, 197, 94); border-color: rgba(34, 197, 94, 0.5); }
+.tsf-pill.is-on[data-status="in-progress"] { background: rgba(37, 99, 235, 0.22); color: rgb(96, 165, 250); border-color: rgba(96, 165, 250, 0.5); }
+.tsf-pill.is-on[data-status="planned"]     { background: rgba(160, 174, 192, 0.22); color: rgb(203, 213, 225); border-color: rgba(203, 213, 225, 0.5); }
+.tsf-pill.is-on[data-status="expired"]     { background: rgba(220, 38, 38, 0.22); color: rgb(239, 68, 68); border-color: rgba(239, 68, 68, 0.5); }

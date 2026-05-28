@@ -4229,6 +4229,21 @@ function bindTrainingListeners() {
         });
     });
 
+    // Status filter pills (assignments sub-tab only).
+    document.querySelectorAll('#training-view .tsf-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const s = btn.dataset.status;
+            if (trainingState.statusFilter.has(s)) {
+                trainingState.statusFilter.delete(s);
+                btn.classList.remove('is-on');
+            } else {
+                trainingState.statusFilter.add(s);
+                btn.classList.add('is-on');
+            }
+            renderTrainingAssignments();
+        });
+    });
+
     // Resource filter: empty string = all resources
     document.getElementById('trainingResourceSelect').addEventListener('change', async (e) => {
         trainingState.assignmentsResourceId = e.target.value || '';
@@ -4718,7 +4733,15 @@ function renderTrainingAssignments() {
     items.forEach(it => { if (groups[it.status]) groups[it.status].push(it); });
 
     const today = new Date();
-    list.innerHTML = Object.entries(groups).filter(([, arr]) => arr.length).map(([status, arr]) => `
+    const visibleGroups = Object.entries(groups)
+        .filter(([status, arr]) => arr.length && trainingState.statusFilter.has(status));
+
+    if (visibleGroups.length === 0 && items.length > 0) {
+        list.innerHTML = '<p class="empty">No assignments match the current status filter.</p>';
+        return;
+    }
+
+    list.innerHTML = visibleGroups.map(([status, arr]) => `
         <section class="training-group">
             <h3>${formatStatus(status)} <span class="badge">${arr.length}</span></h3>
             <div class="training-cards">
