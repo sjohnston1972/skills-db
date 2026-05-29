@@ -1908,6 +1908,57 @@ footer {
     border: 1px solid var(--border);
 }
 
+/* Resource profile: radar + certifications side by side (wraps on narrow widths) */
+#modalProfileContent .profile-top {
+    display: flex;
+    gap: 1.5rem;
+    align-items: stretch;
+    flex-wrap: wrap;
+    margin: 2rem 0;
+}
+#modalProfileContent .profile-top .profile-chart {
+    flex: 1 1 340px;
+    min-width: 300px;
+    margin: 0;
+}
+.profile-certs {
+    flex: 1 1 300px;
+    min-width: 280px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+.profile-certs h4 { margin-top: 0 !important; }
+.profile-certs .cert-empty { color: var(--text-secondary); font-size: 0.9rem; }
+.cert-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: 0.45rem;
+    max-height: 360px; overflow-y: auto;
+}
+.cert-row {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-input);
+}
+.cert-icon { font-size: 1.05rem; line-height: 1; }
+.cert-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.cert-name { font-weight: 600; font-size: 0.88rem; color: var(--text-primary); }
+.cert-vendor { font-size: 0.72rem; color: var(--text-secondary); }
+.cert-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; white-space: nowrap; }
+.cert-badge {
+    font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em;
+    padding: 0.12rem 0.5rem; border-radius: 999px; text-transform: uppercase;
+}
+.cert-badge-achieved    { background: rgba(0, 230, 118, 0.16); color: var(--success); }
+.cert-badge-in-progress { background: rgba(0, 163, 255, 0.16); color: var(--accent); }
+.cert-badge-planned     { background: var(--hover-overlay); color: var(--text-secondary); }
+.cert-badge-expired     { background: rgba(255, 77, 77, 0.16); color: var(--danger); }
+.cert-date { font-size: 0.72rem; color: var(--text-secondary); }
+.cert-date.soon { color: var(--warning); font-weight: 600; }
+.cert-date.past { color: var(--danger); font-weight: 600; }
+
 #modalProfileContent h4 {
     font-size: 1.1rem;
     margin-top: 1.5rem;

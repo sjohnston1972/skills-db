@@ -2150,14 +2150,29 @@ async function showResourceProfile(resourceId) {
         </div>`;
     });
 
+    // Fetch this resource's certifications/training for the side panel.
+    let certs = [];
+    try {
+        certs = (await TrainingsAPI.assignmentsFor(resourceId)) || [];
+    } catch (err) {
+        console.error('Failed to load certifications:', err);
+    }
+    const certsHtml = buildResourceCertsHtml(certs, now);
+
     let html = `
         <div class="profile-header">
             <h3>${resource.name}</h3>
             <p>${resource.email}</p>
         </div>
 
-        <div class="profile-chart">
-            <canvas id="resourceRadarChart"></canvas>
+        <div class="profile-top">
+            <div class="profile-chart">
+                <canvas id="resourceRadarChart"></canvas>
+            </div>
+            <div class="profile-certs">
+                <h4>Certifications &amp; Training</h4>
+                ${certsHtml}
+            </div>
         </div>
 
         ${tabsHtml}
@@ -2205,6 +2220,54 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+
+// Build the certifications/training side-panel HTML for a resource profile.
+// `now` is Date.now() from the caller (used for expiry highlighting).
+function buildResourceCertsHtml(certs, now) {
+    if (!certs || !certs.length) {
+        return '<p class="cert-empty">No certifications or training recorded.</p>';
+    }
+    const ORDER = { achieved: 0, 'in-progress': 1, planned: 2, expired: 3 };
+    const META = {
+        achieved:      { icon: '🏅', label: 'Achieved' },
+        'in-progress': { icon: '📘', label: 'In progress' },
+        planned:       { icon: '⏳', label: 'Planned' },
+        expired:       { icon: '⚠️', label: 'Expired' },
+    };
+    const fmt = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+    const rows = [...certs].sort((a, b) =>
+        ((ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9)) ||
+        (a.vendor || '').localeCompare(b.vendor || '') ||
+        (a.training_name || '').localeCompare(b.training_name || '')
+    ).map(c => {
+        const meta = META[c.status] || { icon: '•', label: c.status || '' };
+        let dateHtml = '';
+        if (c.status === 'achieved' && c.expiry_date) {
+            const days = Math.floor((new Date(c.expiry_date).getTime() - now) / 86400000);
+            const cls = days < 0 ? 'past' : days <= 90 ? 'soon' : '';
+            dateHtml = `<span class="cert-date ${cls}">expires ${fmt(c.expiry_date)}</span>`;
+        } else if (c.status === 'expired' && c.expiry_date) {
+            dateHtml = `<span class="cert-date past">expired ${fmt(c.expiry_date)}</span>`;
+        } else if ((c.status === 'in-progress' || c.status === 'planned') && c.target_date) {
+            dateHtml = `<span class="cert-date">target ${fmt(c.target_date)}</span>`;
+        } else if (c.status === 'achieved' && c.completed_date) {
+            dateHtml = `<span class="cert-date">achieved ${fmt(c.completed_date)}</span>`;
+        }
+        const vendor = c.vendor ? `<span class="cert-vendor">${escapeHtml(c.vendor)}</span>` : '';
+        return `<li class="cert-row">
+            <span class="cert-icon" aria-hidden="true">${meta.icon}</span>
+            <span class="cert-main">
+                <span class="cert-name">${escapeHtml(c.training_name || '')}</span>
+                ${vendor}
+            </span>
+            <span class="cert-meta">
+                <span class="cert-badge cert-badge-${c.status}">${escapeHtml(meta.label)}</span>
+                ${dateHtml}
+            </span>
+        </li>`;
+    }).join('');
+    return `<ul class="cert-list">${rows}</ul>`;
+}
 
 function renderResourceRadar(resource, allSkills) {
     const ctx = document.getElementById('resourceRadarChart').getContext('2d');
