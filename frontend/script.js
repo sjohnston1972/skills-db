@@ -2934,7 +2934,6 @@ async function saveAiFlag(value) {
         if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
         showToast(`AI features ${value ? 'enabled' : 'disabled'}`, 'success');
         Chat.applyEnabled(value);
-        applyAiMatchVisibility(value);
     } catch (err) {
         showToast(`Save failed: ${err.message}`, 'error');
         loadAiFlag(); // resync toggle with server state on failure
@@ -5040,7 +5039,6 @@ async function saveTrainingAssignment() {
 
 // ==================== INSIGHTS ====================
 
-let insightsBound = false;
 async function renderInsights() {
     const grid = document.getElementById('insightsGrid');
     if (!grid) return;
@@ -5069,142 +5067,6 @@ async function renderInsights() {
                 </ul>` : ''}
         </div>
     `).join('');
-
-    if (!insightsBound) {
-        insightsBound = true;
-        document.getElementById('matchSpecBtn').addEventListener('click', runProjectMatch);
-        document.getElementById('matchSpecAiBtn').addEventListener('click', runProjectMatchAI);
-        applyAiMatchVisibility();
-        document.getElementById('matchSpec').addEventListener('keydown', e => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runProjectMatch();
-        });
-    }
-}
-
-async function applyAiMatchVisibility(enabled) {
-    const btn = document.getElementById('matchSpecAiBtn');
-    if (!btn) return;
-    if (typeof enabled === 'boolean') {
-        btn.style.display = enabled ? '' : 'none';
-        return;
-    }
-    try {
-        const r = await fetch(`${API_BASE}/settings/flags`);
-        const j = await r.json();
-        btn.style.display = (j && j.data && j.data.ai_enabled === false) ? 'none' : '';
-    } catch { /* leave visible on error */ }
-}
-
-async function runProjectMatchAI() {
-    const spec = (document.getElementById('matchSpec').value || '').trim();
-    const out = document.getElementById('matchOutput');
-    if (!spec || spec.length < 5) {
-        out.innerHTML = '<p class="empty">Give me at least a sentence to work with.</p>';
-        return;
-    }
-    out.innerHTML = '<p class="empty">Asking Claude to analyse…</p>';
-    try {
-        const r = await fetch(`${API_BASE}/insights/match/ai`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ spec }),
-        });
-        const j = await r.json();
-        if (r.status === 503) {
-            out.innerHTML = '<p class="empty">No Anthropic API key configured. Set one in <strong>Settings → AI / API Keys</strong>, then try again.</p>';
-            return;
-        }
-        if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
-
-        const rb = j.data.rule_based;
-        let html = '';
-        // AI analysis first — it's the value-add
-        html += `<div class="ai-analysis">
-            <h4>✨ AI analysis</h4>
-            <div class="ai-prose">${escapeHtml(j.data.ai_analysis || '(no analysis returned)').replace(/\n\n/g, '</p><p>').replace(/^/, '<p>').replace(/$/, '</p>')}</div>
-            <small class="muted">Model: ${escapeHtml(j.data.model || '?')} · ${j.data.usage ? (j.data.usage.input_tokens + ' input + ' + j.data.usage.output_tokens + ' output tokens') : ''}</small>
-        </div>`;
-
-        // And the underlying rule-based pick for transparency
-        html += '<details class="ai-rulebased"><summary>Rule-based matcher output</summary>';
-        html += '<h4>Inferred requirements</h4>';
-        html += '<ul class="match-reqs">' + (rb.requirements || []).map(r => `
-            <li><strong>${escapeHtml(r.mainSkill)}</strong> <span class="muted">≥ ${r.minLevel}</span></li>`).join('') + '</ul>';
-        html += '<h4>Top candidates</h4>';
-        html += '<ol class="match-candidates">';
-        for (const c of (rb.candidates || [])) {
-            const pct = Math.round((c.requirements_met / c.requirements_total) * 100);
-            html += `<li>
-                <div class="match-cand-head">
-                    <strong>${escapeHtml(c.name)}</strong>
-                    <span class="match-met">${c.requirements_met} / ${c.requirements_total} requirements met</span>
-                    <span class="match-bar"><span class="match-bar-fill" style="width:${pct}%"></span></span>
-                </div>
-            </li>`;
-        }
-        html += '</ol></details>';
-
-        out.innerHTML = html;
-    } catch (err) {
-        out.innerHTML = `<p class="empty">AI analysis failed: ${escapeHtml(err.message)}</p>`;
-    }
-}
-
-async function runProjectMatch() {
-    const spec = (document.getElementById('matchSpec').value || '').trim();
-    const out = document.getElementById('matchOutput');
-    if (!spec || spec.length < 5) {
-        out.innerHTML = '<p class="empty">Give me at least a sentence to work with.</p>';
-        return;
-    }
-    out.innerHTML = '<p class="empty">Matching…</p>';
-    try {
-        const r = await fetch(`${API_BASE}/insights/match`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ spec }),
-        });
-        const j = await r.json();
-        if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
-        const d = j.data;
-        if (!d.matched_skills.length) {
-            out.innerHTML = `<p class="empty">${escapeHtml(d.note || 'No matching skills found.')}</p>`;
-            return;
-        }
-        let html = '<div class="match-results">';
-        html += '<h4>Inferred requirements</h4>';
-        html += '<ul class="match-reqs">' + d.requirements.map(r => `
-            <li>
-                <strong>${escapeHtml(r.mainSkill)}</strong>
-                <span class="muted">≥ ${r.minLevel}</span>
-                ${r.matched_terms.length ? `<span class="muted">— matched on: ${r.matched_terms.map(escapeHtml).join(', ')}</span>` : ''}
-            </li>`).join('') + '</ul>';
-
-        html += '<h4>Top candidates</h4>';
-        if (!d.candidates.length) {
-            html += '<p class="empty">No team members match these requirements yet.</p>';
-        } else {
-            html += '<ol class="match-candidates">';
-            for (const c of d.candidates) {
-                const pct = Math.round((c.requirements_met / c.requirements_total) * 100);
-                html += `
-                    <li>
-                        <div class="match-cand-head">
-                            <strong>${escapeHtml(c.name)}</strong>
-                            <span class="match-met">${c.requirements_met} / ${c.requirements_total} requirements met</span>
-                            <span class="match-bar" title="${pct}% match"><span class="match-bar-fill" style="width:${pct}%"></span></span>
-                        </div>
-                        ${c.matched.length ? `<div class="match-meta">✓ ${c.matched.map(m => `${escapeHtml(m.skill)} (L${m.level})`).join(', ')}</div>` : ''}
-                        ${c.gaps.length ? `<div class="match-meta match-gap">✗ ${c.gaps.map(g => `${escapeHtml(g.skill)} (L${g.level}, ${g.gap} short)`).join(', ')}</div>` : ''}
-                    </li>`;
-            }
-            html += '</ol>';
-        }
-        html += '</div>';
-        out.innerHTML = html;
-    } catch (err) {
-        out.innerHTML = `<p class="empty">Match failed: ${escapeHtml(err.message)}</p>`;
-    }
 }
 
 // ==================== FLOATING CHAT WIDGET ====================
