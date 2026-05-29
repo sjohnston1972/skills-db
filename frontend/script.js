@@ -3,7 +3,7 @@
 // ============================================================
 (function () {
     const html = document.documentElement;
-    const stored = localStorage.getItem('theme') || 'dark';
+    const stored = localStorage.getItem('theme') || 'light';
     html.setAttribute('data-theme', stored);
 
     function updateToggleLabel(theme) {
