@@ -16,12 +16,12 @@ router.get('/', async (req, res) => {
     try {
         // Get all resources
         const resourcesResult = await db.query(
-            'SELECT id, name, email FROM resources ORDER BY name'
+            'SELECT id, name, email, job_role FROM resources ORDER BY name'
         );
 
         // Get all main skills
         const mainSkillsResult = await db.query(
-            'SELECT id, name FROM main_skills ORDER BY name'
+            'SELECT id, name, category, weight, skill_type FROM main_skills ORDER BY name'
         );
 
         // Get all sub-skills
@@ -34,7 +34,7 @@ router.get('/', async (req, res) => {
 
         // Get all resource-sub-skill mappings
         const mappingsResult = await db.query(`
-            SELECT rss.resource_id, rss.sub_skill_id, rss.level,
+            SELECT rss.resource_id, rss.sub_skill_id, rss.level, rss.last_assessed_at,
                    ss.name as sub_skill_name, ss.main_skill_id,
                    ms.name as main_skill_name
             FROM resource_sub_skills rss
@@ -50,18 +50,20 @@ router.get('/', async (req, res) => {
                 m => m.resource_id === resource.id
             );
 
-            // Group sub-skills by main skill
+            // Group sub-skills by main skill (+ capture last-assessed timestamps)
             const subSkills = {};
-            const mainSkillsMap = {};
+            const lastAssessed = {};
 
             resourceMappings.forEach(mapping => {
                 const mainSkillName = mapping.main_skill_name;
 
                 if (!subSkills[mainSkillName]) {
                     subSkills[mainSkillName] = {};
+                    lastAssessed[mainSkillName] = {};
                 }
 
                 subSkills[mainSkillName][mapping.sub_skill_name] = mapping.level;
+                lastAssessed[mainSkillName][mapping.sub_skill_name] = mapping.last_assessed_at;
             });
 
             // Calculate main skill levels from sub-skills
@@ -74,22 +76,26 @@ router.get('/', async (req, res) => {
                 id: resource.id,
                 name: resource.name,
                 email: resource.email,
+                job_role: resource.job_role,
                 skills: skills,
-                subSkills: subSkills
+                subSkills: subSkills,
+                lastAssessed: lastAssessed
             };
         });
 
         // Build skills array for frontend
         const skills = mainSkillsResult.rows.map(mainSkill => {
-            // Get sub-skills for this main skill
+            // Get sub-skills for this main skill as {id, name} objects
             const mainSkillSubSkills = subSkillsResult.rows
                 .filter(ss => ss.main_skill_id === mainSkill.id)
-                .map(ss => ss.name);
+                .map(ss => ({ id: ss.id, name: ss.name }));
 
             return {
                 id: mainSkill.id,
                 name: mainSkill.name,
-                category: 'Main Skill Category',
+                category: mainSkill.category,
+                weight: mainSkill.weight,
+                skillType: mainSkill.skill_type,
                 subSkills: mainSkillSubSkills
             };
         });

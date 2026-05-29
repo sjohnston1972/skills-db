@@ -62,6 +62,15 @@ const DataQualityAPI = {
 };
 
 const API = {
+    // Single-call full dataset (resources w/ skill levels + lastAssessed, skills w/
+    // weight/skillType/sub-skills). Replaces the per-resource + per-skill fan-out.
+    async getAllData() {
+        const response = await fetch(`${API_BASE}/data`);
+        if (!response.ok) throw new Error('Failed to fetch data');
+        const result = await response.json();
+        return result.data;
+    },
+
     // Skills endpoints
     async getSkills() {
         const response = await fetch(`${API_BASE}/skills`);
@@ -677,49 +686,25 @@ async function getData() {
     }
 
     try {
-        // Fetch all data from API
-        const [skills, resources, metadata] = await Promise.all([
-            API.getSkills(),
-            API.getResources(),
-            API.getMetadata().catch(() => ({ lastUpdated: new Date().toISOString() }))
-        ]);
+        // Single request — the backend assembles the full dataset in one query set.
+        // Replaces the previous per-resource + per-skill request fan-out (~44 calls
+        // for this dataset → 1), which was the source of add/remove sluggishness.
+        const payload = await API.getAllData();
 
-        // Fetch full details for each resource
-        const resourcesWithDetails = await Promise.all(
-            resources.map(async (resource) => {
-                try {
-                    return await API.getResource(resource.id);
-                } catch (err) {
-                    console.error(`Failed to fetch resource ${resource.id}:`, err);
-                    return resource;
-                }
-            })
-        );
-
-        // Transform skills data to match expected format
-        const transformedSkills = await Promise.all(
-            skills.map(async (skill) => {
-                const subSkillsData = await API.getSubSkills(skill.id);
-                return {
-                    id: skill.id,
-                    name: skill.name,
-                    category: skill.category || 'Main Skill Category',
-                    weight: skill.weight || 5,
-                    skillType: skill.skillType || 'technical',
-                    subSkills: subSkillsData.map(ss => ({
-                        id: ss.id,
-                        name: ss.name
-                    }))
-                };
-            })
-        );
-
-        // Build data structure
+        // Normalise to the structure the rest of the app expects (apply the same
+        // defaults the old transform used, and keep sub-skills as {id, name}).
         const data = {
-            skills: transformedSkills,
-            resources: resourcesWithDetails,
+            skills: (payload.skills || []).map(skill => ({
+                id: skill.id,
+                name: skill.name,
+                category: skill.category || 'Main Skill Category',
+                weight: skill.weight || 5,
+                skillType: skill.skillType || 'technical',
+                subSkills: (skill.subSkills || []).map(ss => ({ id: ss.id, name: ss.name }))
+            })),
+            resources: payload.resources || [],
             metadata: {
-                lastUpdated: metadata.lastUpdated || new Date().toISOString()
+                lastUpdated: (payload.metadata && payload.metadata.lastUpdated) || payload.lastUpdated || new Date().toISOString()
             }
         };
 
