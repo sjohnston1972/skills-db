@@ -246,6 +246,50 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/insights/recent-activity?within=14
+ * Unified "recent wins" feed for the dashboard. Each item is a factual,
+ * date-windowed event tagged with a `type` the frontend maps to an icon/phrase.
+ * Purely time-windowed, so the card auto-clears as events age out — no stored state.
+ *   - type 'cert'     : a certification achieved (resource_trainings.completed_date)
+ *   - type 'new_hire' : a resource added to the team (resources.created_at)
+ */
+router.get('/recent-activity', async (req, res) => {
+    try {
+        const within = String(Math.min(Math.max(parseInt(req.query.within, 10) || 14, 1), 365));
+        const [certs, hires] = await Promise.all([
+            db.query(`
+                SELECT r.name AS resource_name, t.name AS training_name, t.vendor,
+                       (CURRENT_DATE - rt.completed_date) AS days_ago
+                FROM resource_trainings rt
+                JOIN resources r ON r.id = rt.resource_id
+                JOIN trainings  t ON t.id = rt.training_id
+                WHERE rt.status = 'achieved' AND rt.completed_date IS NOT NULL
+                  AND rt.completed_date >= CURRENT_DATE - ($1 || ' days')::interval
+            `, [within]),
+            db.query(`
+                SELECT r.name AS resource_name, r.job_role,
+                       (CURRENT_DATE - r.created_at::date) AS days_ago
+                FROM resources r
+                WHERE r.created_at >= CURRENT_DATE - ($1 || ' days')::interval
+            `, [within]),
+        ]);
+        const items = [
+            ...certs.rows.map(c => ({
+                type: 'cert', resource_name: c.resource_name,
+                days_ago: Number(c.days_ago), training_name: c.training_name, vendor: c.vendor,
+            })),
+            ...hires.rows.map(h => ({
+                type: 'new_hire', resource_name: h.resource_name,
+                days_ago: Number(h.days_ago), job_role: h.job_role,
+            })),
+        ].sort((a, b) => a.days_ago - b.days_ago);
+        res.json({ success: true, data: items });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/**
  * POST /api/insights/match
  * Body: { spec: "free-form text describing the project" }
  * Returns: { matched_skills: [...], requirements: [...], candidates: [...] }

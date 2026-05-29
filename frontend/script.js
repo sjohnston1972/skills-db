@@ -4137,25 +4137,41 @@ function renderQualityList(title, items, formatter) {
     </section>`;
 }
 
-// Recent wins — celebrates certifications achieved in the last 2 weeks. The window
-// is enforced server-side, so the card auto-clears once a win ages past it.
+// Recent wins — a unified, date-windowed feed of factual team events (certifications
+// achieved, new team members). The window is enforced server-side, so the card
+// auto-clears as events age past it — no stored state. New event types slot in by
+// adding a case to the switch below + a source in GET /api/insights/recent-activity.
 const RECENT_WINS_DAYS = 14;
+function recentWinMarkup(it) {
+    switch (it.type) {
+        case 'cert': {
+            const vendor = it.vendor ? `<span class="recent-wins-vendor">${escapeHtml(it.vendor)}</span>` : '';
+            return { icon: '🏅', text: `<strong>${escapeHtml(it.resource_name)}</strong> achieved ${escapeHtml(it.training_name)}${vendor}` };
+        }
+        case 'new_hire': {
+            const role = it.job_role ? ` as ${escapeHtml(it.job_role)}` : '';
+            return { icon: '👋', text: `<strong>${escapeHtml(it.resource_name)}</strong> joined the team${role}` };
+        }
+        default:
+            return { icon: '🎉', text: `<strong>${escapeHtml(it.resource_name)}</strong>` };
+    }
+}
 async function populateRecentWins() {
     const card = document.getElementById('recentWins');
     const list = document.getElementById('recentWinsList');
     if (!card || !list) return;
     try {
-        const r = await fetch(`${API_BASE}/trainings/recent-achievements?within=${RECENT_WINS_DAYS}`);
+        const r = await fetch(`${API_BASE}/insights/recent-activity?within=${RECENT_WINS_DAYS}`);
         const j = await r.json();
         const items = (j && j.data) ? j.data : [];
         if (!items.length) { card.hidden = true; list.innerHTML = ''; return; }
         list.innerHTML = items.map(it => {
             const days = Number(it.days_ago);
             const when = days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
-            const vendor = it.vendor ? `<span class="recent-wins-vendor">${escapeHtml(it.vendor)}</span>` : '';
+            const { icon, text } = recentWinMarkup(it);
             return `<li class="recent-wins-item">
-                <span class="recent-wins-icon" aria-hidden="true">🏅</span>
-                <span class="recent-wins-text"><strong>${escapeHtml(it.resource_name)}</strong> achieved ${escapeHtml(it.training_name)}${vendor}</span>
+                <span class="recent-wins-icon" aria-hidden="true">${icon}</span>
+                <span class="recent-wins-text">${text}</span>
                 <span class="recent-wins-when">${when}</span>
             </li>`;
         }).join('');
