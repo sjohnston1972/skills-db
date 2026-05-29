@@ -9,15 +9,19 @@ This supersedes `MIGRATION-TO-LINUX-VM.md` (which described a native, non-contai
 install and is no longer the chosen approach).
 
 ## 1. Provision the VM
-- Ubuntu 22.04 LTS, 2 vCPU / 4 GB RAM / 30 GB managed disk.
+- **OS image:** Debian 12 "Bookworm" (Gen2) from the official Debian publisher in the Azure Marketplace. (Lean, stable, no snap — a good minimal Docker host. Ubuntu 22.04 LTS also works unchanged if you prefer it.)
+- **Size:** B-series burstable (internal tools sit near-idle, so you pay for low average use). Start with **B2s** (2 vCPU / 4 GB) for this app plus one or two others; choose **B2ms** (2 vCPU / 8 GB) if you're committing to a shared multi-app host — RAM, not CPU/disk, is the limiter since each tool runs its own Postgres + Node. You can resize later (stop → change size → start) with no data loss.
+- **Disk:** 30 GB **Standard SSD** OS disk is ample (the whole app footprint is <0.5 GB). Bump to 64 GB only if you'll accumulate many images/logical backups. Avoid Standard HDD (poor for a DB host); Premium SSD is overkill here.
 - Attach to the private vNet/subnet. No public IP / no inbound 80/443 from the internet.
 - Allow inbound port 8098 (or 80) **only from the private network** via the NSG.
 
 ## 2. Install Docker Engine + git
+The convenience script auto-detects Debian 12 (and Ubuntu) and adds Docker's official
+apt repo, so these steps are identical on either distro:
 ```bash
 sudo apt update && sudo apt install -y git ca-certificates curl
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker "$USER"   # log out/in for group to take effect
+sudo usermod -aG docker "$USER"   # use your provisioning username; log out/in for it to take effect
 docker --version && docker compose version
 ```
 
