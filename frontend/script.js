@@ -2199,16 +2199,21 @@ async function showResourceProfile(resourceId) {
     modal.style.display = 'flex';
     document.body.style.overflow = 'hidden'; // Prevent background scrolling
 
-    // Render individual radar chart
-    setTimeout(() => {
+    // Render individual radar chart on the next frame (canvas is now laid out).
+    requestAnimationFrame(() => {
         renderResourceRadar(resource, allSkills);
-    }, 100);
+    });
 }
 
 function closeProfileModal() {
     const modal = document.getElementById('profileModal');
     modal.style.display = 'none';
     document.body.style.overflow = ''; // Restore scrolling
+    // Free the radar chart instance so a closed modal holds nothing.
+    if (resourceRadarChart) {
+        resourceRadarChart.destroy();
+        resourceRadarChart = null;
+    }
 }
 
 // Close modal on ESC key
@@ -2269,8 +2274,17 @@ function buildResourceCertsHtml(certs, now) {
     return `<ul class="cert-list">${rows}</ul>`;
 }
 
+let resourceRadarChart = null;
+
 function renderResourceRadar(resource, allSkills) {
     const ctx = document.getElementById('resourceRadarChart').getContext('2d');
+
+    // Destroy any prior instance before re-creating — otherwise each View click
+    // leaks a Chart.js instance (canvas is replaced on every modal open).
+    if (resourceRadarChart) {
+        resourceRadarChart.destroy();
+        resourceRadarChart = null;
+    }
 
     // Filter out skills where resource has 0 proficiency
     const filteredSkills = allSkills
@@ -2280,7 +2294,7 @@ function renderResourceRadar(resource, allSkills) {
     const labels = filteredSkills.map(item => item.skill);
     const values = filteredSkills.map(item => item.value);
 
-    new Chart(ctx, {
+    resourceRadarChart = new Chart(ctx, {
         type: 'radar',
         data: {
             labels: labels,
