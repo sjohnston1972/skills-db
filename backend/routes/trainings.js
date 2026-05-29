@@ -14,6 +14,32 @@ router.get('/', async (req, res) => {
     }
 });
 
+// GET /api/trainings/recent-achievements?within=14
+// Certifications achieved in the last N days (default 14). Purely time-windowed,
+// so the "recent wins" dashboard notification auto-expires — no stored state needed.
+// MUST be declared before '/:id' or that route swallows this single-segment path.
+router.get('/recent-achievements', async (req, res) => {
+    try {
+        const within = Math.min(Math.max(parseInt(req.query.within, 10) || 14, 1), 365);
+        const r = await db.query(`
+            SELECT rt.id, rt.resource_id, rt.completed_date,
+                   r.name AS resource_name,
+                   t.name AS training_name, t.vendor, t.type,
+                   (CURRENT_DATE - rt.completed_date) AS days_ago
+            FROM resource_trainings rt
+            JOIN resources r ON r.id = rt.resource_id
+            JOIN trainings  t ON t.id = rt.training_id
+            WHERE rt.status = 'achieved'
+              AND rt.completed_date IS NOT NULL
+              AND rt.completed_date >= CURRENT_DATE - ($1 || ' days')::interval
+            ORDER BY rt.completed_date DESC, r.name
+        `, [within]);
+        res.json({ success: true, data: r.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // GET /api/trainings/:id
 router.get('/:id', async (req, res) => {
     try {

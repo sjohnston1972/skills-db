@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=92">
+    <link rel="stylesheet" href="styles.css?v=93">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -119,6 +119,15 @@
                         <span><span class="metric-type-label">No expert</span><span class="dot dot-danger"></span><span id="spofZero">—</span></span>
                     </small>
                 </div>
+            </div>
+
+            <!-- Recent wins — certs achieved in the last 2 weeks (auto-expires via date window) -->
+            <div id="recentWins" class="recent-wins" hidden>
+                <div class="recent-wins-head">
+                    <span class="recent-wins-title">🎉 Recent wins</span>
+                    <span class="recent-wins-sub">new certifications in the last 2 weeks</span>
+                </div>
+                <ul id="recentWinsList" class="recent-wins-list"></ul>
             </div>
 
             <details class="rating-scale-display">
@@ -849,6 +858,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=124"></script>
+    <script src="script.js?v=125"></script>
 </body>
 </html>

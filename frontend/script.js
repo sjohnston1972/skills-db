@@ -1053,6 +1053,9 @@ async function renderDashboard() {
     // Training tile — quick read of training pipeline (best effort; doesn't block dashboard)
     populateTrainingTile().catch(() => {});
 
+    // Recent wins — certs achieved in the last 2 weeks (best effort; doesn't block dashboard)
+    populateRecentWins().catch(() => {});
+
     // Team Experts (L4+): count every (resource × sub-skill) rating at level 4 or 5.
     let expertsTotal = 0, expertsTech = 0, expertsNonTech = 0;
     data.resources.forEach(r => {
@@ -4132,6 +4135,34 @@ function renderQualityList(title, items, formatter) {
         <h3>${title} <span class="badge">${items.length}</span></h3>
         <ul class="quality-list">${items.map(it => `<li>${formatter(it)}</li>`).join('')}</ul>
     </section>`;
+}
+
+// Recent wins — celebrates certifications achieved in the last 2 weeks. The window
+// is enforced server-side, so the card auto-clears once a win ages past it.
+const RECENT_WINS_DAYS = 14;
+async function populateRecentWins() {
+    const card = document.getElementById('recentWins');
+    const list = document.getElementById('recentWinsList');
+    if (!card || !list) return;
+    try {
+        const r = await fetch(`${API_BASE}/trainings/recent-achievements?within=${RECENT_WINS_DAYS}`);
+        const j = await r.json();
+        const items = (j && j.data) ? j.data : [];
+        if (!items.length) { card.hidden = true; list.innerHTML = ''; return; }
+        list.innerHTML = items.map(it => {
+            const days = Number(it.days_ago);
+            const when = days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+            const vendor = it.vendor ? `<span class="recent-wins-vendor">${escapeHtml(it.vendor)}</span>` : '';
+            return `<li class="recent-wins-item">
+                <span class="recent-wins-icon" aria-hidden="true">🏅</span>
+                <span class="recent-wins-text"><strong>${escapeHtml(it.resource_name)}</strong> achieved ${escapeHtml(it.training_name)}${vendor}</span>
+                <span class="recent-wins-when">${when}</span>
+            </li>`;
+        }).join('');
+        card.hidden = false;
+    } catch (err) {
+        card.hidden = true;
+    }
 }
 
 // Dashboard tile populator (training)
