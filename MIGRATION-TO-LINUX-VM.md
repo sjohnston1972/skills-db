@@ -1,3 +1,8 @@
+> **⚠️ SUPERSEDED (2026-05-29):** This native-install plan is no longer the chosen
+> approach — it decomposes the app into separate OS services and abandons the
+> single self-contained container model. Use `docs/DEPLOY-AZURE-VM.md` (container on
+> the VM + named volume + Azure snapshots) instead. Kept for historical reference.
+
 # Skills Matrix Migration Plan: Docker Container → Linux VM (Native Installation)
 
 ## Overview
