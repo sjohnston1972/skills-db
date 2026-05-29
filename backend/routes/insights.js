@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { getApiKey } = require('./settings');
+const { getApiKey, getFlag } = require('./settings');
 
 /**
  * Rule-based team insights — no LLM required.
@@ -454,6 +454,9 @@ router.post('/match', async (req, res) => {
  */
 router.post('/match/ai', async (req, res) => {
     try {
+        if (!(await getFlag('ai_enabled', true))) {
+            return res.status(403).json({ success: false, error: 'AI features are disabled in Settings.' });
+        }
         const apiKey = await getApiKey('anthropic_api_key');
         if (!apiKey) {
             return res.status(503).json({
@@ -622,6 +625,9 @@ Be direct and concrete.`;
  */
 router.post('/chat', async (req, res) => {
     try {
+        if (!(await getFlag('ai_enabled', true))) {
+            return res.status(403).json({ success: false, error: 'AI features are disabled in Settings.' });
+        }
         const apiKey = await getApiKey('anthropic_api_key');
         if (!apiKey) {
             return res.status(503).json({
