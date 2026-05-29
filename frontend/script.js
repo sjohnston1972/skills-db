@@ -2767,6 +2767,7 @@ let managementListenersInit = false;
 function renderManagement() {
     loadAdminUsers();
     loadApiKeyStatus();
+    loadAiFlag();
     if (!managementListenersInit) {
         managementListenersInit = true;
         document.getElementById('addAdminUser').addEventListener('click', addAdminUser);
@@ -2781,6 +2782,7 @@ function renderManagement() {
 
         document.getElementById('anthropicSaveBtn').addEventListener('click', () => saveApiKey('anthropic_api_key'));
         document.getElementById('anthropicRevokeBtn').addEventListener('click', () => revokeApiKey('anthropic_api_key'));
+        document.getElementById('aiEnabledToggle').addEventListener('change', (e) => saveAiFlag(e.target.checked));
     }
 }
 
@@ -2841,6 +2843,36 @@ async function revokeApiKey(name) {
         loadApiKeyStatus();
     } catch (err) {
         showToast(`Revoke failed: ${err.message}`, 'error');
+    }
+}
+
+async function loadAiFlag() {
+    try {
+        const r = await fetch(`${API_BASE}/settings/flags`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'failed');
+        const toggle = document.getElementById('aiEnabledToggle');
+        if (toggle) toggle.checked = j.data.ai_enabled !== false;
+    } catch (err) {
+        showToast(`Could not load AI setting: ${err.message}`, 'error');
+    }
+}
+
+async function saveAiFlag(value) {
+    try {
+        const r = await fetch(`${API_BASE}/settings/flags/ai_enabled`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value }),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
+        showToast(`AI features ${value ? 'enabled' : 'disabled'}`, 'success');
+        Chat.applyEnabled(value);
+        applyAiMatchVisibility();
+    } catch (err) {
+        showToast(`Save failed: ${err.message}`, 'error');
+        loadAiFlag(); // resync toggle with server state on failure
     }
 }
 
@@ -4933,10 +4965,21 @@ async function renderInsights() {
         insightsBound = true;
         document.getElementById('matchSpecBtn').addEventListener('click', runProjectMatch);
         document.getElementById('matchSpecAiBtn').addEventListener('click', runProjectMatchAI);
+        applyAiMatchVisibility();
         document.getElementById('matchSpec').addEventListener('keydown', e => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runProjectMatch();
         });
     }
+}
+
+async function applyAiMatchVisibility() {
+    const btn = document.getElementById('matchSpecAiBtn');
+    if (!btn) return;
+    try {
+        const r = await fetch(`${API_BASE}/settings/flags`);
+        const j = await r.json();
+        btn.style.display = (j && j.data && j.data.ai_enabled === false) ? 'none' : '';
+    } catch { /* leave visible on error */ }
 }
 
 async function runProjectMatchAI() {
@@ -5059,6 +5102,7 @@ const Chat = {
     busy: false,
     keyChecked: false,
     keyConfigured: false,
+    aiEnabled: true,
 
     init() {
         if (this.bound) return;
@@ -5090,6 +5134,24 @@ const Chat = {
         });
 
         this.renderEmpty();
+        this.checkEnabled();
+    },
+
+    async checkEnabled() {
+        try {
+            const r = await fetch(`${API_BASE}/settings/flags`);
+            const j = await r.json();
+            this.applyEnabled(!(j && j.data && j.data.ai_enabled === false));
+        } catch {
+            this.applyEnabled(true); // fail open — never hide due to a transient error
+        }
+    },
+
+    applyEnabled(enabled) {
+        this.aiEnabled = enabled;
+        const widget = document.getElementById('chatWidget');
+        if (widget) widget.style.display = enabled ? '' : 'none';
+        if (!enabled) this.close();
     },
 
     async open() {
