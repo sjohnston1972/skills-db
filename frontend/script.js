@@ -2869,7 +2869,7 @@ async function saveAiFlag(value) {
         if (!r.ok || !j.success) throw new Error(j.error || `HTTP ${r.status}`);
         showToast(`AI features ${value ? 'enabled' : 'disabled'}`, 'success');
         Chat.applyEnabled(value);
-        applyAiMatchVisibility();
+        applyAiMatchVisibility(value);
     } catch (err) {
         showToast(`Save failed: ${err.message}`, 'error');
         loadAiFlag(); // resync toggle with server state on failure
@@ -4972,9 +4972,13 @@ async function renderInsights() {
     }
 }
 
-async function applyAiMatchVisibility() {
+async function applyAiMatchVisibility(enabled) {
     const btn = document.getElementById('matchSpecAiBtn');
     if (!btn) return;
+    if (typeof enabled === 'boolean') {
+        btn.style.display = enabled ? '' : 'none';
+        return;
+    }
     try {
         const r = await fetch(`${API_BASE}/settings/flags`);
         const j = await r.json();
