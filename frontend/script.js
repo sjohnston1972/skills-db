@@ -36,6 +36,35 @@
 
 const API_BASE = '/api';
 
+// ==================== DEPARTMENT CONTEXT ====================
+// The app is multi-department. The active department slug is stored per-browser
+// and sent on every API request via the X-Department header so the backend
+// scopes data to it. Default to projects-team.
+const ACTIVE_DEPT_KEY = 'activeDepartment';
+const DEFAULT_DEPT_SLUG = 'projects-team';
+function getActiveDepartment() {
+    return localStorage.getItem(ACTIVE_DEPT_KEY) || DEFAULT_DEPT_SLUG;
+}
+function setActiveDepartment(slug) {
+    localStorage.setItem(ACTIVE_DEPT_KEY, slug);
+}
+
+// Inject X-Department on every same-origin /api request. script.js makes raw
+// fetch() calls in many places, so wrapping fetch is the single chokepoint.
+(function () {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+        try {
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            if (url.startsWith('/api') || url.startsWith(location.origin + '/api')) {
+                init = Object.assign({}, init);
+                init.headers = Object.assign({}, init.headers, { 'X-Department': getActiveDepartment() });
+            }
+        } catch (e) { /* fall through to a normal fetch */ }
+        return nativeFetch(input, init);
+    };
+})();
+
 // Staffing & Data Quality APIs (new — added in v3)
 const StaffingAPI = {
     async search(requirements, mode = 'match') {
@@ -57,6 +86,27 @@ const DataQualityAPI = {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();
         if (!j.success) throw new Error(j.error || 'data-quality fetch failed');
+        return j.data;
+    }
+};
+
+const DepartmentsAPI = {
+    async getAll() {
+        const r = await fetch(`${API_BASE}/departments`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'departments fetch failed');
+        return j.data;
+    },
+    async rename(id, name) {
+        const r = await fetch(`${API_BASE}/departments/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'rename failed');
         return j.data;
     }
 };
@@ -3932,27 +3982,35 @@ function showToast(message, type = 'info') {
 let DEPARTMENTS = [];
 
 async function initDepartments() {
-    DEPARTMENTS = await DepartmentsAPI.getAll();
-    const sel = document.getElementById('deptSelect');
+    // Always apply the stored theme first, so even if the departments fetch
+    // fails the rest of app init (data load) is never blocked by this function.
     const active = getActiveDepartment();
-    sel.innerHTML = '';
-    for (const d of DEPARTMENTS) {
-        const opt = document.createElement('option');
-        opt.value = d.slug;
-        opt.dataset.id = d.id;
-        opt.textContent = d.name;
-        if (d.slug === active) opt.selected = true;
-        sel.appendChild(opt);
-    }
     applyDepartmentTheme(active);
+    const sel = document.getElementById('deptSelect');
+    if (!sel) return;
+    try {
+        DEPARTMENTS = await DepartmentsAPI.getAll();
+        sel.innerHTML = '';
+        for (const d of DEPARTMENTS) {
+            const opt = document.createElement('option');
+            opt.value = d.slug;
+            opt.dataset.id = d.id;
+            opt.textContent = d.name;
+            if (d.slug === active) opt.selected = true;
+            sel.appendChild(opt);
+        }
 
-    sel.addEventListener('change', async () => {
-        setActiveDepartment(sel.value);
-        applyDepartmentTheme(sel.value);
-        await loadCurrentView();
-    });
+        sel.addEventListener('change', async () => {
+            setActiveDepartment(sel.value);
+            applyDepartmentTheme(sel.value);
+            await loadCurrentView();
+        });
 
-    document.getElementById('deptRenameBtn').addEventListener('click', renameActiveDepartment);
+        const renameBtn = document.getElementById('deptRenameBtn');
+        if (renameBtn) renameBtn.addEventListener('click', renameActiveDepartment);
+    } catch (e) {
+        console.error('Failed to load departments (switcher disabled):', e);
+    }
 }
 
 function applyDepartmentTheme(slug) {
