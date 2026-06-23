@@ -3927,9 +3927,56 @@ function showToast(message, type = 'info') {
     }, 3500);
 }
 
+// ==================== DEPARTMENT SWITCHER ====================
+
+let DEPARTMENTS = [];
+
+async function initDepartments() {
+    DEPARTMENTS = await DepartmentsAPI.getAll();
+    const sel = document.getElementById('deptSelect');
+    const active = getActiveDepartment();
+    sel.innerHTML = DEPARTMENTS.map(d =>
+        `<option value="${d.slug}" data-id="${d.id}" ${d.slug === active ? 'selected' : ''}>${d.name}</option>`
+    ).join('');
+    applyDepartmentTheme(active);
+
+    sel.addEventListener('change', async () => {
+        setActiveDepartment(sel.value);
+        applyDepartmentTheme(sel.value);
+        await loadCurrentView();
+    });
+
+    document.getElementById('deptRenameBtn').addEventListener('click', renameActiveDepartment);
+}
+
+function applyDepartmentTheme(slug) {
+    document.documentElement.setAttribute('data-department', slug);
+}
+
+async function renameActiveDepartment() {
+    const sel = document.getElementById('deptSelect');
+    const opt = sel.options[sel.selectedIndex];
+    const id = opt.getAttribute('data-id');
+    const current = opt.textContent;
+    const name = window.prompt('Rename department:', current);
+    if (!name || !name.trim() || name.trim() === current) return;
+    const updated = await DepartmentsAPI.rename(id, name.trim());
+    opt.textContent = updated.name;
+    const d = DEPARTMENTS.find(x => String(x.id) === String(id));
+    if (d) d.name = updated.name;
+}
+
+async function loadCurrentView() {
+    clearDataCache();
+    const activeBtn = document.querySelector('.nav-btn.active');
+    const viewName = activeBtn ? activeBtn.getAttribute('data-view') : 'dashboard';
+    await renderView(viewName);
+}
+
 // ==================== INITIALIZATION ====================
 
 document.addEventListener('DOMContentLoaded', async () => {
+    await initDepartments();
     await initializeData();
     setupNavigation();
     await updateLastUpdated();
