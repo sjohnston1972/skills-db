@@ -138,6 +138,7 @@
     appearance: none;
     -webkit-appearance: none;
     padding-right: 1.9rem;
+    line-height: 1.6; /* room for descenders (e.g. the "g" in Engineering) */
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.65rem center;
@@ -2324,6 +2325,12 @@ footer {
     padding: 0.05rem 0.45rem; margin-left: 0.4rem;
 }
 .recent-wins-when { font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; }
+.recent-wins-elite {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em;
+    color: #7a5b00; background: linear-gradient(135deg, #ffd86b, #f5a524);
+    border-radius: 999px; padding: 0.05rem 0.45rem; margin-left: 0.4rem;
+    text-transform: uppercase;
+}
 
 /* Expiry pills on assignment cards */
 .training-date.expired       { color: #dc2626; border-left-color: #dc2626; font-weight: 600; }
@@ -3294,6 +3301,21 @@ footer {
     border: 1px solid var(--border);
     border-bottom-left-radius: 4px;
 }
+/* Rich formatting inside bot messages */
+.chat-msg-bot p { margin: 0 0 0.5rem; }
+.chat-msg-bot p:last-child { margin-bottom: 0; }
+.chat-msg-bot ul, .chat-msg-bot ol { margin: 0.25rem 0 0.5rem; padding-left: 1.2rem; }
+.chat-msg-bot li { margin: 0.12rem 0; }
+.chat-msg-bot strong { font-weight: 700; }
+.chat-msg-bot code {
+    background: rgba(127, 127, 127, 0.16);
+    padding: 0.05rem 0.32rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+.chat-ent { font-weight: 600; border-radius: 4px; padding: 0 0.22rem; }
+.chat-ent-person { color: var(--accent); background: rgba(127, 127, 127, 0.12); }
+.chat-ent-skill { color: #10b981; background: rgba(16, 185, 129, 0.13); }
 .chat-msg-system {
     align-self: stretch;
     background: transparent;

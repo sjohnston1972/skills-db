@@ -1355,6 +1355,84 @@ function escapeHtml(s) {
     return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
 
+function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Build a single regex + lookup of the active department's known entities
+// (people, main skills, sub-skills) so the chatbot can highlight them.
+function buildChatEntityIndex() {
+    const data = dataCache;
+    if (!data) return { regex: null, map: null };
+    const map = new Map(); // lowercased name -> 'person' | 'skill'
+    const add = (name, type) => {
+        if (!name) return;
+        const k = name.toLowerCase();
+        if (!map.has(k)) map.set(k, type);
+    };
+    (data.resources || []).forEach(r => add(r.name, 'person'));
+    (data.skills || []).forEach(s => {
+        add(s.name, 'skill');
+        (s.subSkills || []).forEach(ss => add(ss.name, 'skill'));
+    });
+    if (!map.size) return { regex: null, map: null };
+    // Longest names first so the alternation prefers the most specific match.
+    const names = Array.from(map.keys()).sort((a, b) => b.length - a.length);
+    const regex = new RegExp('\\b(' + names.map(escapeRegExp).join('|') + ')\\b', 'gi');
+    return { regex, map };
+}
+
+// Inline markdown: bold, code, italic (run on already-escaped text).
+function chatInlineMd(s) {
+    return s
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, '$1<em>$2</em>');
+}
+
+// Render a bot message with rich formatting: lightweight markdown plus
+// highlighting of known resource / skill names. Input is untrusted, so we
+// escape first and only ever emit our own tags.
+function formatBotMessage(text) {
+    let src = escapeHtml(text || '');
+    const { regex, map } = buildChatEntityIndex();
+    if (regex) {
+        src = src.replace(regex, (m) => {
+            const type = map.get(m.toLowerCase());
+            return type ? `<span class="chat-ent chat-ent-${type}">${m}</span>` : m;
+        });
+    }
+    const lines = src.split('\n');
+    let html = '', listType = null, listItems = [], para = [];
+    const flushList = () => {
+        if (listType) { html += `<${listType}>${listItems.join('')}</${listType}>`; listType = null; listItems = []; }
+    };
+    const flushPara = () => {
+        if (para.length) { html += `<p>${para.join('<br>')}</p>`; para = []; }
+    };
+    for (const raw of lines) {
+        const line = raw.trim();
+        const bullet = line.match(/^[-•]\s+(.*)$/);
+        const numbered = line.match(/^\d+\.\s+(.*)$/);
+        if (bullet) {
+            flushPara();
+            if (listType !== 'ul') { flushList(); listType = 'ul'; }
+            listItems.push(`<li>${chatInlineMd(bullet[1])}</li>`);
+        } else if (numbered) {
+            flushPara();
+            if (listType !== 'ol') { flushList(); listType = 'ol'; }
+            listItems.push(`<li>${chatInlineMd(numbered[0].replace(/^\d+\.\s+/, ''))}</li>`);
+        } else if (!line) {
+            flushPara(); flushList();
+        } else {
+            flushList();
+            para.push(chatInlineMd(line));
+        }
+    }
+    flushPara(); flushList();
+    return html || escapeHtml(text || '');
+}
+
 function isStaleISO(iso) {
     if (!iso) return false;
     const days = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
@@ -4335,7 +4413,11 @@ function recentWinMarkup(it) {
     switch (it.type) {
         case 'cert': {
             const vendor = it.vendor ? `<span class="recent-wins-vendor">${escapeHtml(it.vendor)}</span>` : '';
-            return { icon: '🏅', text: `<strong>${escapeHtml(it.resource_name)}</strong> achieved ${escapeHtml(it.training_name)}${vendor}` };
+            // Elite certifications (e.g. CCIE) get extra flair.
+            const elite = /\bCCIE\b/i.test(it.training_name || '');
+            const icon = elite ? '🏆' : '🏅';
+            const flair = elite ? ' <span class="recent-wins-elite">★ Elite</span>' : '';
+            return { icon, text: `<strong>${escapeHtml(it.resource_name)}</strong> achieved ${escapeHtml(it.training_name)}${flair}${vendor}` };
         }
         case 'new_hire': {
             const role = it.job_role ? ` as ${escapeHtml(it.job_role)}` : '';
@@ -5473,9 +5555,11 @@ const Chat = {
     renderHistory() {
         const body = document.getElementById('chatBody');
         if (!body) return;
-        body.innerHTML = this.history.map(m => `
-            <div class="chat-msg chat-msg-${m.role === 'user' ? 'user' : 'bot'}">${escapeHtml(m.content)}</div>
-        `).join('');
+        body.innerHTML = this.history.map(m => {
+            const isUser = m.role === 'user';
+            const content = isUser ? escapeHtml(m.content) : formatBotMessage(m.content);
+            return `<div class="chat-msg chat-msg-${isUser ? 'user' : 'bot'}">${content}</div>`;
+        }).join('');
         body.scrollTop = body.scrollHeight;
     },
 
