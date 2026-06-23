@@ -14,33 +14,39 @@ router.get('/', async (req, res) => {
 
         // Pull the data we need in one shot
         const [resourcesR, skillsR, ratingsR, certsR, expiringR] = await Promise.all([
-            db.query(`SELECT id, name FROM resources`),
+            db.query(`SELECT id, name FROM resources WHERE department_id = $1`, [req.departmentId]),
             db.query(`
                 SELECT ms.id, ms.name, ms.weight, ms.skill_type,
                        COUNT(DISTINCT ss.id) AS sub_skill_count
                 FROM main_skills ms
                 LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+                WHERE ms.department_id = $1
                 GROUP BY ms.id
-            `),
+            `, [req.departmentId]),
             db.query(`
                 SELECT rss.resource_id, ss.main_skill_id, rss.level, r.name AS resource_name, ms.name AS main_skill, ms.weight, ms.skill_type
                 FROM resource_sub_skills rss
                 JOIN sub_skills ss ON ss.id = rss.sub_skill_id
                 JOIN main_skills ms ON ms.id = ss.main_skill_id
                 JOIN resources r ON r.id = rss.resource_id
-            `),
+                WHERE ms.department_id = $1
+            `, [req.departmentId]),
             db.query(`
                 SELECT rt.status, COUNT(*)::int AS n
                 FROM resource_trainings rt
+                JOIN resources r ON r.id = rt.resource_id
+                WHERE r.department_id = $1
                 GROUP BY rt.status
-            `),
+            `, [req.departmentId]),
             db.query(`
                 SELECT COUNT(*)::int AS n
                 FROM resource_trainings rt
+                JOIN resources r ON r.id = rt.resource_id
                 WHERE rt.expiry_date IS NOT NULL
                   AND rt.expiry_date <= CURRENT_DATE + INTERVAL '90 days'
                   AND rt.status IN ('achieved', 'in-progress')
-            `),
+                  AND r.department_id = $1
+            `, [req.departmentId]),
         ]);
 
         const totalResources = resourcesR.rows.length;
@@ -265,13 +271,15 @@ router.get('/recent-activity', async (req, res) => {
                 JOIN trainings  t ON t.id = rt.training_id
                 WHERE rt.status = 'achieved' AND rt.completed_date IS NOT NULL
                   AND rt.completed_date >= CURRENT_DATE - ($1 || ' days')::interval
-            `, [within]),
+                  AND r.department_id = $2
+            `, [within, req.departmentId]),
             db.query(`
                 SELECT r.name AS resource_name, r.job_role,
                        (CURRENT_DATE - r.created_at::date) AS days_ago
                 FROM resources r
                 WHERE r.created_at >= CURRENT_DATE - ($1 || ' days')::interval
-            `, [within]),
+                  AND r.department_id = $2
+            `, [within, req.departmentId]),
         ]);
         const items = [
             ...certs.rows.map(c => ({
@@ -309,8 +317,9 @@ router.post('/match', async (req, res) => {
                    ARRAY_AGG(ss.name) FILTER (WHERE ss.name IS NOT NULL) AS sub_names
             FROM main_skills ms
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+            WHERE ms.department_id = $1
             GROUP BY ms.id
-        `);
+        `, [req.departmentId]);
 
         // Synonym aliases: when the user uses a common shorthand or alternative
         // name, rewrite it to the canonical phrase that appears in our skill
@@ -433,8 +442,10 @@ router.post('/match', async (req, res) => {
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
             LEFT JOIN resource_sub_skills rss
                    ON rss.sub_skill_id = ss.id AND rss.resource_id = r.id
+            WHERE r.department_id = $1
+              AND ms.department_id = $1
             GROUP BY r.id, r.name, ms.name
-        `)).rows;
+        `, [req.departmentId])).rows;
 
         const byResource = new Map();
         for (const row of allMainLevels) {
@@ -521,7 +532,7 @@ router.post('/match/ai', async (req, res) => {
             body: JSON.stringify({ spec }),
         };
         // Call internally rather than over HTTP
-        const fakeReq = { body: { spec } };
+        const fakeReq = { body: { spec }, departmentId: req.departmentId };
         let ruleData;
         await new Promise((resolve) => {
             const fakeRes = {
@@ -548,9 +559,10 @@ router.post('/match/ai', async (req, res) => {
                    ARRAY_AGG(ss.name ORDER BY ss.name) FILTER (WHERE ss.name IS NOT NULL) AS subs
             FROM main_skills ms
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+            WHERE ms.department_id = $1
             GROUP BY ms.id
             ORDER BY ms.skill_type, ms.name
-        `)).rows;
+        `, [req.departmentId])).rows;
         const catalogueText = catalogueRows.map(r =>
             `- ${r.main_name} (${r.skill_type}, weight ${r.weight}): ${(r.subs || []).join(', ') || '—'}`
         ).join('\n');
@@ -563,9 +575,11 @@ router.post('/match/ai', async (req, res) => {
             CROSS JOIN main_skills ms
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
             LEFT JOIN resource_sub_skills rss ON rss.sub_skill_id = ss.id AND rss.resource_id = r.id
+            WHERE r.department_id = $1
+              AND ms.department_id = $1
             GROUP BY r.id, r.name, r.job_role, ms.name
             ORDER BY r.name, ms.name
-        `)).rows;
+        `, [req.departmentId])).rows;
         const byPerson = new Map();
         for (const row of teamRows) {
             if (!byPerson.has(row.name)) byPerson.set(row.name, { role: row.job_role, skills: [] });
@@ -697,9 +711,10 @@ router.post('/chat', async (req, res) => {
                        ARRAY_AGG(ss.name ORDER BY ss.name) FILTER (WHERE ss.name IS NOT NULL) AS subs
                 FROM main_skills ms
                 LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+                WHERE ms.department_id = $1
                 GROUP BY ms.id
                 ORDER BY ms.skill_type, ms.name
-            `),
+            `, [req.departmentId]),
             // Raw per-sub-skill ratings (level > 0 only) so the assistant can
             // answer questions like "who's an expert in Cisco ISE specifically?"
             db.query(`
@@ -711,16 +726,18 @@ router.post('/chat', async (req, res) => {
                 JOIN main_skills ms ON ms.id = ss.main_skill_id
                 JOIN resources r ON r.id = rss.resource_id
                 WHERE rss.level > 0
+                  AND ms.department_id = $1
                 ORDER BY r.name, ms.skill_type, ms.name, ss.name
-            `),
+            `, [req.departmentId]),
             db.query(`
                 SELECT r.name AS resource_name, t.name AS training_name, t.code, t.vendor, t.category,
                        rt.status, rt.target_date, rt.completed_date, rt.expiry_date
                 FROM resource_trainings rt
                 JOIN resources r ON r.id = rt.resource_id
                 JOIN trainings t ON t.id = rt.training_id
+                WHERE r.department_id = $1
                 ORDER BY r.name, t.name
-            `).catch(() => ({ rows: [] })),
+            `, [req.departmentId]).catch(() => ({ rows: [] })),
         ]);
 
         const catalogueText = catalogueRows.rows.map(r =>
