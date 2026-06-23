@@ -5,18 +5,20 @@ const db = require('../db');
 // GET /api/skills - List all main skills with their sub-skills
 router.get('/', async (req, res) => {
     try {
-        // Get all main skills
+        // Get all main skills scoped to the active department
         const mainSkillsResult = await db.query(
-            'SELECT id, name, category, weight, skill_type, created_at FROM main_skills ORDER BY name'
+            'SELECT id, name, category, weight, skill_type, created_at FROM main_skills WHERE department_id = $1 ORDER BY name',
+            [req.departmentId]
         );
 
-        // Get all sub-skills
+        // Get all sub-skills scoped to the active department via join
         const subSkillsResult = await db.query(`
             SELECT ss.id, ss.name, ss.main_skill_id, ms.name as main_skill_name
             FROM sub_skills ss
             JOIN main_skills ms ON ss.main_skill_id = ms.id
+            WHERE ms.department_id = $1
             ORDER BY ms.name, ss.name
-        `);
+        `, [req.departmentId]);
 
         // Group sub-skills by main skill
         const skillsMap = new Map();
@@ -62,10 +64,10 @@ router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Get main skill
+        // Get main skill scoped to the active department
         const mainSkillResult = await db.query(
-            'SELECT id, name, category, weight, skill_type, created_at FROM main_skills WHERE id = $1',
-            [id]
+            'SELECT id, name, category, weight, skill_type, created_at FROM main_skills WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         if (mainSkillResult.rows.length === 0) {
@@ -130,12 +132,12 @@ router.post('/', async (req, res) => {
     const client = await db.getClient();
 
     try {
-        const { id, name, category, weight, skillType, subSkills } = req.body;
+        const { name, category, weight, skillType, subSkills } = req.body;
 
-        if (!id || !name) {
+        if (!name) {
             return res.status(400).json({
                 success: false,
-                error: 'Skill ID and name are required'
+                error: 'Skill name is required'
             });
         }
 
@@ -155,12 +157,15 @@ router.post('/', async (req, res) => {
             });
         }
 
+        // Generate namespaced id from department slug + name
+        const mainSkillId = `${req.departmentSlug}-` + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
         await client.query('BEGIN');
 
-        // Check if ID or name already exists
+        // Check if ID or name already exists within this department
         const existingResult = await client.query(
-            'SELECT id FROM main_skills WHERE id = $1 OR name = $2',
-            [id, name]
+            'SELECT id FROM main_skills WHERE (id = $1 OR name = $2) AND department_id = $3',
+            [mainSkillId, name, req.departmentId]
         );
 
         if (existingResult.rows.length > 0) {
@@ -171,10 +176,10 @@ router.post('/', async (req, res) => {
             });
         }
 
-        // Insert new main skill
+        // Insert new main skill with department_id
         const result = await client.query(
-            'INSERT INTO main_skills (id, name, category, weight, skill_type) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, category, weight, skill_type, created_at',
-            [id, name, category || null, weight || 5, skillType || 'technical']
+            'INSERT INTO main_skills (id, name, category, weight, skill_type, department_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, category, weight, skill_type, created_at',
+            [mainSkillId, name, category || null, weight || 5, skillType || 'technical', req.departmentId]
         );
 
         // Insert sub-skills if provided
@@ -183,7 +188,7 @@ router.post('/', async (req, res) => {
                 if (subSkillName && typeof subSkillName === 'string') {
                     await client.query(
                         'INSERT INTO sub_skills (main_skill_id, name) VALUES ($1, $2)',
-                        [id, subSkillName.trim()]
+                        [mainSkillId, subSkillName.trim()]
                     );
                 }
             }
@@ -247,10 +252,10 @@ router.put('/:id', async (req, res) => {
 
         await client.query('BEGIN');
 
-        // Check if skill exists
+        // Check if skill exists within this department
         const existingResult = await client.query(
-            'SELECT id FROM main_skills WHERE id = $1',
-            [id]
+            'SELECT id FROM main_skills WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         if (existingResult.rows.length === 0) {
@@ -334,10 +339,10 @@ router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Check if skill exists
+        // Check if skill exists within this department
         const existingResult = await db.query(
-            'SELECT id FROM main_skills WHERE id = $1',
-            [id]
+            'SELECT id FROM main_skills WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         if (existingResult.rows.length === 0) {
@@ -385,10 +390,10 @@ router.post('/:id/sub-skills', async (req, res) => {
             });
         }
 
-        // Check if main skill exists
+        // Check if main skill exists within this department
         const mainSkillResult = await db.query(
-            'SELECT id FROM main_skills WHERE id = $1',
-            [id]
+            'SELECT id FROM main_skills WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         if (mainSkillResult.rows.length === 0) {
@@ -450,6 +455,19 @@ router.put('/:id/sub-skills/:subSkillId', async (req, res) => {
             });
         }
 
+        // Check if main skill exists within this department (guards cross-dept access)
+        const mainSkillResult = await db.query(
+            'SELECT id FROM main_skills WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
+        );
+
+        if (mainSkillResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Main skill not found'
+            });
+        }
+
         // Check if sub-skill exists and belongs to the main skill
         const existingResult = await db.query(
             'SELECT id FROM sub_skills WHERE id = $1 AND main_skill_id = $2',
@@ -493,6 +511,19 @@ router.put('/:id/sub-skills/:subSkillId', async (req, res) => {
 router.delete('/:id/sub-skills/:subSkillId', async (req, res) => {
     try {
         const { id, subSkillId } = req.params;
+
+        // Check if main skill exists within this department (guards cross-dept access)
+        const mainSkillResult = await db.query(
+            'SELECT id FROM main_skills WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
+        );
+
+        if (mainSkillResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Main skill not found'
+            });
+        }
 
         // Check if sub-skill exists and belongs to the main skill
         const existingResult = await db.query(
