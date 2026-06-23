@@ -21,14 +21,18 @@ function departmentMiddleware(db) {
 
   return async function (req, res, next) {
     try {
-      const slug = (req.get('X-Department') || DEFAULT_SLUG).trim();
+      const requested = (req.get('X-Department') || DEFAULT_SLUG).trim();
       if (!cache) await load();
-      // Refresh once if an otherwise-plausible slug isn't cached yet.
-      if (!Object.prototype.hasOwnProperty.call(cache, slug) && slug !== DEFAULT_SLUG) {
+      // Refresh once if the requested slug isn't cached yet (may have been added since boot).
+      if (!Object.prototype.hasOwnProperty.call(cache, requested)) {
         await load();
       }
-      req.departmentId = resolveDepartmentId(slug, cache, DEFAULT_SLUG);
-      req.departmentSlug = Object.keys(cache).find(s => cache[s] === req.departmentId) || DEFAULT_SLUG;
+      const id = resolveDepartmentId(requested, cache, DEFAULT_SLUG);
+      if (id == null) {
+        return next(new Error(`Default department '${DEFAULT_SLUG}' not found`));
+      }
+      req.departmentId = id;
+      req.departmentSlug = Object.prototype.hasOwnProperty.call(cache, requested) ? requested : DEFAULT_SLUG;
       next();
     } catch (err) {
       next(err);
