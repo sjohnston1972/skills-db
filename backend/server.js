@@ -31,6 +31,9 @@ app.use((req, res, next) => {
     next();
 });
 
+const { departmentMiddleware } = require('./middleware/department');
+app.use('/api', departmentMiddleware(db));
+
 // API Routes
 app.use('/api/data', dataRoutes);
 app.use('/api/resources', resourcesRoutes);
