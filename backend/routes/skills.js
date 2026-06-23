@@ -107,6 +107,15 @@ router.get('/:id/sub-skills', async (req, res) => {
     try {
         const { id } = req.params;
 
+        // Check if main skill exists within this department (guards cross-dept read)
+        const exists = await db.query(
+            'SELECT id FROM main_skills WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
+        );
+        if (exists.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Main skill not found' });
+        }
+
         // Get sub-skills
         const subSkillsResult = await db.query(
             'SELECT id, name FROM sub_skills WHERE main_skill_id = $1 ORDER BY name',
@@ -172,7 +181,7 @@ router.post('/', async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(409).json({
                 success: false,
-                error: 'Main skill with this ID or name already exists'
+                error: 'A skill with this name already exists in this department'
             });
         }
 
