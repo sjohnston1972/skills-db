@@ -70,6 +70,31 @@
   .tag.modal{color:#7a5b00;background:linear-gradient(135deg,#ffd86b,#f5a524)}
   .tag.ai{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2))}
 
+  /* security section */
+  .verdict{display:flex;align-items:center;gap:14px;background:#fff5f5;border:1px solid #f6c2c2;
+    border-left:5px solid var(--bad);border-radius:12px;padding:16px 20px;margin:0 0 26px;box-shadow:var(--shadow-sm)}
+  .verdict .big{font-size:1.6rem}
+  .verdict b{color:#b91c1c}
+  .epigraph{font-style:italic;color:var(--muted);border-left:3px solid var(--line);padding-left:14px;margin:0 0 26px}
+  .sevgroup{margin:0 0 22px}
+  .sevhead{display:flex;align-items:center;gap:10px;font-weight:800;margin:0 0 12px;font-size:1.05rem}
+  .sevdot{width:12px;height:12px;border-radius:50%;flex:none}
+  .crit .sevdot{background:#ef4444}.high .sevdot{background:#f5a524}.med .sevdot{background:#eab308}.good .sevdot{background:#10b981}
+  .crit .sevhead{color:#b91c1c}.high .sevhead{color:#b45309}.med .sevhead{color:#a16207}.good .sevhead{color:#047857}
+  .findings{display:grid;gap:12px}
+  .finding{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 16px;box-shadow:var(--shadow-sm)}
+  .finding.crit{border-left:4px solid #ef4444}.finding.high{border-left:4px solid #f5a524}.finding.med{border-left:4px solid #eab308}
+  .finding h4{margin:0 0 4px;font-size:.98rem}
+  .finding p{margin:0;color:#444a5c;font-size:.9rem}
+  .finding code{background:#f0f1f6;border-radius:4px;padding:.05rem .35rem;font-size:.84em}
+  .goodbox{background:#f1fbf6;border:1px solid #bfe8d4;border-radius:11px;padding:14px 18px}
+  .goodbox ul{margin:0;padding-left:20px}.goodbox li{font-size:.92rem;color:#33503f;margin:.2em 0}
+  .fixlist{counter-reset:fix;list-style:none;padding:0;margin:6px 0 0}
+  .fixlist li{position:relative;padding:12px 14px 12px 52px;background:var(--card);border:1px solid var(--line);
+    border-radius:11px;margin-bottom:10px;font-size:.95rem;box-shadow:var(--shadow-sm)}
+  .fixlist li::before{counter-increment:fix;content:counter(fix);position:absolute;left:14px;top:50%;transform:translateY(-50%);
+    width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:.8rem;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2))}
   footer{padding:50px 0 70px;text-align:center;color:var(--muted);font-size:.85rem;border-top:1px solid var(--line)}
   .callout{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);
     border-radius:10px;padding:14px 18px;margin:20px 0;font-size:.92rem;box-shadow:var(--shadow-sm)}
@@ -89,6 +114,7 @@
     <a href="#training">Training</a>
     <a href="#insights">Insights</a>
     <a href="#ai">AI Assistant</a>
+    <a href="#security">Security</a>
   </nav>
 </div></div>
 
@@ -284,6 +310,80 @@
     </div>
     <div class="callout">Every department gets its own people, skills, certifications and a subtle accent theme —
       switch departments from the header and the entire tool (and this assistant) re‑scopes instantly.</div>
+  </section>
+
+  <!-- 10 Security -->
+  <section class="feature" id="security">
+    <div class="kicker"><div class="num">10</div><h2>Security Posture <span class="tag" style="color:#fff;background:#ef4444">Candid Review</span></h2></div>
+    <p class="epigraph">A security architect's assessment, monocle firmly in place. The short version: a genuinely nice
+       <b>internal</b> tool — treat it as exactly that.</p>
+
+    <div class="verdict">
+      <span class="big">🔴</span>
+      <div><b>Verdict — not for anything you'd miss if it leaked.</b><br>
+        Secure enough as an internal, low‑sensitivity tool behind a real network boundary; <b>not</b> as an internet‑facing app.</div>
+    </div>
+
+    <div class="sevgroup crit">
+      <div class="sevhead"><span class="sevdot"></span>Critical — the "why is this on a network" tier</div>
+      <div class="findings">
+        <div class="finding crit"><h4>The entire API is unauthenticated</h4>
+          <p>Only static <code>.js</code>/<code>.css</code>/<code>.html</code> sit behind basic auth. Every <code>/api/*</code> route —
+             including <code>POST /api/data</code> (wipes &amp; rebuilds a department) and <code>DELETE /api/resources/:id</code> —
+             answers anyone who can reach the port, with no credentials. The login is theatre.</p></div>
+        <div class="finding crit"><h4>Secrets baked into the Docker image</h4>
+          <p><code>COPY .env</code> bakes live Anthropic/OpenAI/xAI/DeepSeek/Cloudflare keys into a committed image layer, in plaintext.
+             Treat them as burned — rotate all of them.</p></div>
+        <div class="finding crit"><h4>Plaintext credentials in the repo</h4>
+          <p><code>creds.txt</code> holds <code>admin / skillsadmin2024</code>; <code>.htpasswd</code> ships alongside it.</p></div>
+        <div class="finding crit"><h4>PostgreSQL set to <code>trust</code>, all interfaces</h4>
+          <p><code>host all all 0.0.0.0/0 trust</code>, <code>listen_addresses='*'</code>, password <code>changeme123</code>.
+             Saved today only by the port not being published.</p></div>
+      </div>
+    </div>
+
+    <div class="sevgroup high">
+      <div class="sevhead"><span class="sevdot"></span>High — the "I'm writing this down" tier</div>
+      <div class="findings">
+        <div class="finding high"><h4>Unauthenticated + AI = an open tab on your bill</h4>
+          <p>Anyone can drive the server‑side LLM key indefinitely. No rate limiting, no quotas.</p></div>
+        <div class="finding high"><h4>Departments are not a security boundary</h4>
+          <p>The active department is a client‑controlled <code>X‑Department</code> header. One trust level exists: "can reach the box."</p></div>
+        <div class="finding high"><h4>Wide‑open CORS</h4>
+          <p><code>app.use(cors())</code> invites every origin to a party that already has no bouncer.</p></div>
+        <div class="finding high"><h4>Stored‑XSS lineage</h4>
+          <p>Two <code>innerHTML</code> injection paths (chat + switcher) were patched; the codebase leans on <code>innerHTML</code> and warrants a fuller audit.</p></div>
+      </div>
+    </div>
+
+    <div class="sevgroup med">
+      <div class="sevhead"><span class="sevdot"></span>Medium — the "tut, tut" tier</div>
+      <div class="findings">
+        <div class="finding med"><h4>No TLS in the stack itself</h4>
+          <p>Basic‑auth credentials travel base64‑encoded every request, relying on an assumed external TLS terminator.</p></div>
+        <div class="finding med"><h4>Other niggles</h4>
+          <p>No CSRF tokens (mitigated by no cookie session) · outstanding <code>npm audit</code> findings · SQL + values logged to stdout.</p></div>
+      </div>
+    </div>
+
+    <div class="sevgroup good">
+      <div class="sevhead"><span class="sevdot"></span>Credit where it's grudgingly due</div>
+      <div class="goodbox"><ul>
+        <li><b>SQL is parameterised</b> throughout (<code>$1, $2…</code>) — no injection.</li>
+        <li>Resource passwords use <b>bcrypt</b>.</li>
+        <li>The destructive <code>POST /api/data</code> is at least scoped to a single department.</li>
+      </ul></div>
+    </div>
+
+    <div class="sevgroup">
+      <div class="sevhead" style="color:var(--ink)">Remediation — in priority order</div>
+      <ol class="fixlist">
+        <li><b>Put <code>/api/*</code> behind auth.</b> Nothing else matters until this is done.</li>
+        <li><b>Rotate every key</b>, stop <code>COPY .env</code> into the image, purge <code>creds.txt</code> + <code>.htpasswd</code> from git history.</li>
+        <li><b>Fix Postgres</b> — <code>scram‑sha‑256</code>, a real password, bind to localhost only.</li>
+        <li><b>Rate‑limit</b> the AI endpoints, enforce <b>TLS</b>, and tighten <b>CORS</b> to known origins.</li>
+      </ol>
+    </div>
   </section>
 
 </main>
