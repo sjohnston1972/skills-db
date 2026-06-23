@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 // PATCH /api/departments/:id — rename only
 router.patch('/:id', async (req, res) => {
   try {
-    const name = (req.body && req.body.name || '').trim();
+    const name = (req.body?.name ?? '').trim();
     if (!name) {
       return res.status(400).json({ success: false, error: 'Department name is required' });
     }
