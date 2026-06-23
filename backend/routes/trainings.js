@@ -61,11 +61,11 @@ router.put('/:id', async (req, res) => {
                  category    = COALESCE($4, category),
                  type        = COALESCE($5, type),
                  description = COALESCE($6, description)
-             WHERE id = $7
+             WHERE id = $7 AND department_id = $8
              RETURNING *`,
-            [name || null, code || null, vendor || null, category || null, type || null, description || null, req.params.id]
+            [name || null, code || null, vendor || null, category || null, type || null, description || null, req.params.id, req.departmentId]
         );
-        if (r.rows.length === 0) return res.status(404).json({ success: false, error: 'Not found' });
+        if (r.rows.length === 0) return res.status(404).json({ success: false, error: 'Training not found' });
         res.json({ success: true, data: r.rows[0] });
     } catch (err) {
         if (err.code === '23505') {
@@ -204,6 +204,14 @@ router.put('/assignments/:id', async (req, res) => {
         const { status, target_date, completed_date, expiry_date, notes } = req.body || {};
         if (status && !['planned', 'in-progress', 'achieved', 'expired'].includes(status)) {
             return res.status(400).json({ success: false, error: 'invalid status' });
+        }
+        const owns = await db.query(
+            `SELECT 1 FROM resource_trainings rt JOIN resources r ON rt.resource_id = r.id
+             WHERE rt.id = $1 AND r.department_id = $2`,
+            [req.params.id, req.departmentId]
+        );
+        if (owns.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Assignment not found' });
         }
         const r = await db.query(
             `UPDATE resource_trainings
