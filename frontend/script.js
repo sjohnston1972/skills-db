@@ -3935,9 +3935,15 @@ async function initDepartments() {
     DEPARTMENTS = await DepartmentsAPI.getAll();
     const sel = document.getElementById('deptSelect');
     const active = getActiveDepartment();
-    sel.innerHTML = DEPARTMENTS.map(d =>
-        `<option value="${d.slug}" data-id="${d.id}" ${d.slug === active ? 'selected' : ''}>${d.name}</option>`
-    ).join('');
+    sel.innerHTML = '';
+    for (const d of DEPARTMENTS) {
+        const opt = document.createElement('option');
+        opt.value = d.slug;
+        opt.dataset.id = d.id;
+        opt.textContent = d.name;
+        if (d.slug === active) opt.selected = true;
+        sel.appendChild(opt);
+    }
     applyDepartmentTheme(active);
 
     sel.addEventListener('change', async () => {
