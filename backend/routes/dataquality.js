@@ -23,19 +23,21 @@ router.get('/', async (req, res) => {
                 SELECT r.id, r.name
                 FROM resources r
                 LEFT JOIN resource_sub_skills rss ON rss.resource_id = r.id
+                WHERE r.department_id = $1
                 GROUP BY r.id, r.name
                 HAVING COUNT(rss.level) = 0
                 ORDER BY r.name
-            `),
-            db.query(`SELECT id, name FROM resources WHERE email IS NULL OR email = '' ORDER BY name`),
+            `, [req.departmentId]),
+            db.query(`SELECT id, name FROM resources WHERE (email IS NULL OR email = '') AND department_id = $1 ORDER BY name`, [req.departmentId]),
             db.query(`
                 SELECT ms.id, ms.name, ms.weight, ms.skill_type AS "skillType"
                 FROM main_skills ms
                 LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+                WHERE ms.department_id = $1
                 GROUP BY ms.id, ms.name, ms.weight, ms.skill_type
                 HAVING COUNT(ss.id) = 0
                 ORDER BY ms.name
-            `),
+            `, [req.departmentId]),
             db.query(`
                 SELECT r.id AS resource_id, r.name AS resource_name,
                        ms.name AS main_skill, ss.name AS sub_skill, rss.level,
@@ -45,10 +47,11 @@ router.get('/', async (req, res) => {
                 JOIN resources r ON r.id = rss.resource_id
                 JOIN sub_skills ss ON ss.id = rss.sub_skill_id
                 JOIN main_skills ms ON ms.id = ss.main_skill_id
-                WHERE rss.last_assessed_at < CURRENT_TIMESTAMP - ($1 || ' days')::interval
+                WHERE r.department_id = $1
+                  AND rss.last_assessed_at < CURRENT_TIMESTAMP - ($2 || ' days')::interval
                 ORDER BY rss.last_assessed_at ASC
                 LIMIT 200
-            `, [staleDays]),
+            `, [req.departmentId, staleDays]),
             db.query(`
                 SELECT rt.id, rt.resource_id, rt.expiry_date, rt.status,
                        r.name AS resource_name,
@@ -57,11 +60,12 @@ router.get('/', async (req, res) => {
                 FROM resource_trainings rt
                 JOIN resources r ON r.id = rt.resource_id
                 JOIN trainings t ON t.id = rt.training_id
-                WHERE rt.expiry_date IS NOT NULL
-                  AND rt.expiry_date <= CURRENT_DATE + ($1 || ' days')::interval
+                WHERE r.department_id = $1
+                  AND rt.expiry_date IS NOT NULL
+                  AND rt.expiry_date <= CURRENT_DATE + ($2 || ' days')::interval
                   AND rt.status IN ('achieved', 'in-progress')
                 ORDER BY rt.expiry_date ASC
-            `, [expiringWindow]),
+            `, [req.departmentId, expiringWindow]),
         ]);
 
         res.json({

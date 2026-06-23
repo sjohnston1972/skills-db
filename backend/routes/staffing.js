@@ -37,8 +37,9 @@ router.post('/search', async (req, res) => {
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
             LEFT JOIN resource_sub_skills rss
                    ON rss.sub_skill_id = ss.id AND rss.resource_id = r.id
+            WHERE r.department_id = $1
             GROUP BY r.id, r.name, r.email, ms.name
-        `)).rows;
+        `, [req.departmentId])).rows;
 
         // Pivot rows → { resource: { skill: level } }
         const matrix = new Map();
