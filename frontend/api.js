@@ -3,6 +3,15 @@
 
 const API_BASE = '/api';
 
+const ACTIVE_DEPT_KEY = 'activeDepartment';
+const DEFAULT_DEPT_SLUG = 'projects-team';
+function getActiveDepartment() {
+    return localStorage.getItem(ACTIVE_DEPT_KEY) || DEFAULT_DEPT_SLUG;
+}
+function setActiveDepartment(slug) {
+    localStorage.setItem(ACTIVE_DEPT_KEY, slug);
+}
+
 /**
  * Make an API request
  * @param {string} endpoint - API endpoint (e.g., '/data', '/resources')
@@ -14,7 +23,8 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     const options = {
         method,
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Department': getActiveDepartment()
         }
     };
 
@@ -224,11 +234,22 @@ const DataQualityAPI = {
     }
 };
 
+/**
+ * Departments API
+ */
+const DepartmentsAPI = {
+    async getAll() { return await apiRequest('/departments', 'GET'); },
+    async rename(id, name) { return await apiRequest(`/departments/${id}`, 'PATCH', { name }); }
+};
+
 // Export APIs
 window.DataAPI = DataAPI;
 window.ResourcesAPI = ResourcesAPI;
 window.SkillsAPI = SkillsAPI;
 window.StaffingAPI = StaffingAPI;
 window.DataQualityAPI = DataQualityAPI;
+window.DepartmentsAPI = DepartmentsAPI;
+window.getActiveDepartment = getActiveDepartment;
+window.setActiveDepartment = setActiveDepartment;
 window.checkHealth = checkHealth;
 window.apiRequest = apiRequest;
