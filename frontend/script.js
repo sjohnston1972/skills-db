@@ -4000,9 +4000,14 @@ async function initDepartments() {
             sel.appendChild(opt);
         }
 
+        const activeDept = DEPARTMENTS.find(d => d.slug === active);
+        if (activeDept) applyDepartmentBanner(activeDept.name);
+
         sel.addEventListener('change', async () => {
             setActiveDepartment(sel.value);
             applyDepartmentTheme(sel.value);
+            const opt = sel.options[sel.selectedIndex];
+            if (opt) applyDepartmentBanner(opt.textContent);
             await loadCurrentView();
         });
 
@@ -4017,6 +4022,15 @@ function applyDepartmentTheme(slug) {
     document.documentElement.setAttribute('data-department', slug);
 }
 
+// Reflect the active department in the main banner + browser tab title.
+function applyDepartmentBanner(name) {
+    if (!name) return;
+    const title = `${name} Skills Matrix`;
+    const h1 = document.getElementById('appTitle');
+    if (h1) h1.textContent = title;
+    document.title = title;
+}
+
 async function renameActiveDepartment() {
     const sel = document.getElementById('deptSelect');
     const opt = sel.options[sel.selectedIndex];
@@ -4028,6 +4042,8 @@ async function renameActiveDepartment() {
     opt.textContent = updated.name;
     const d = DEPARTMENTS.find(x => String(x.id) === String(id));
     if (d) d.name = updated.name;
+    // If the renamed department is the active one, refresh the banner.
+    if (opt.selected) applyDepartmentBanner(updated.name);
 }
 
 async function loadCurrentView() {
@@ -4336,7 +4352,8 @@ async function populateRecentWins() {
     try {
         const r = await fetch(`${API_BASE}/insights/recent-activity?within=${RECENT_WINS_DAYS}`);
         const j = await r.json();
-        const items = (j && j.data) ? j.data : [];
+        const all = (j && j.data) ? j.data : [];
+        const items = all.slice(0, 2); // show only the two most recent wins
         if (!items.length) { card.hidden = true; list.innerHTML = ''; return; }
         list.innerHTML = items.map(it => {
             const days = Number(it.days_ago);

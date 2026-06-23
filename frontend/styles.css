@@ -83,10 +83,34 @@
 [data-department="engineering"] { --accent: #7c5cff; --accent-2: #9d86ff; --accent-grad: #5d3fe0; }
 
 /* Optional: tint the switcher control with the active accent */
-.dept-switcher { display: inline-flex; align-items: center; gap: 6px; }
-.dept-select { background: transparent; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 8px; }
-.dept-rename-btn { background: transparent; border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; cursor: pointer; padding: 4px 8px; }
-.dept-rename-btn:hover { background: var(--accent); color: #fff; }
+.dept-switcher { display: inline-flex; align-items: center; }
+/* Department picker — same box + font as the sign-out button */
+.dept-select {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.85rem;
+    font-family: inherit;
+    line-height: 1.2;
+    cursor: pointer;
+    margin-left: 0.5rem;
+}
+.dept-select:hover { background: rgba(127, 127, 127, 0.12); }
+/* Inline edit-icon button beside the banner title */
+.header-title-row { display: flex; align-items: center; gap: 0.5rem; }
+.dept-rename-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+.dept-rename-btn:hover { color: var(--accent); background: rgba(127, 127, 127, 0.12); }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -2222,6 +2246,8 @@ footer {
     margin-bottom: 1rem;
     font-size: 0.92rem;
 }
+/* Honour the hidden attribute — display:flex above would otherwise force an empty bar */
+.dashboard-alert[hidden] { display: none; }
 .dashboard-alert .alert-icon { font-size: 1.1rem; }
 .dashboard-alert .alert-text { flex: 1; }
 .dashboard-alert .alert-action {

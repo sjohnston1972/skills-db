@@ -12,7 +12,10 @@
     <header>
         <div class="container">
             <div class="header-brand">
-                <h1>Project Team Skills Matrix</h1>
+                <div class="header-title-row">
+                    <h1 id="appTitle">Project Team Skills Matrix</h1>
+                    <button id="deptRenameBtn" class="dept-rename-btn" title="Rename department" aria-label="Rename department">✎</button>
+                </div>
                 <p class="tagline">Team Capability Tracking &amp; Skills Gap Analysis</p>
             </div>
             <div class="header-actions">
@@ -26,7 +29,6 @@
                 </button>
                 <div class="dept-switcher">
                   <select id="deptSelect" class="dept-select" aria-label="Department"></select>
-                  <button id="deptRenameBtn" class="dept-rename-btn" title="Rename department" aria-label="Rename department">✎</button>
                 </div>
                 <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
                     <!-- Moon icon (shown in dark mode) -->
@@ -862,6 +864,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=131"></script>
+    <script src="script.js?v=132"></script>
 </body>
 </html>
