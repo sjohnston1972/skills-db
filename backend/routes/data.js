@@ -16,12 +16,12 @@ router.get('/', async (req, res) => {
     try {
         // Get all resources
         const resourcesResult = await db.query(
-            'SELECT id, name, email, job_role FROM resources ORDER BY name'
+            'SELECT id, name, email, job_role FROM resources WHERE department_id = $1 ORDER BY name', [req.departmentId]
         );
 
         // Get all main skills
         const mainSkillsResult = await db.query(
-            'SELECT id, name, category, weight, skill_type FROM main_skills ORDER BY name'
+            'SELECT id, name, category, weight, skill_type FROM main_skills WHERE department_id = $1 ORDER BY name', [req.departmentId]
         );
 
         // Get all sub-skills
@@ -29,8 +29,9 @@ router.get('/', async (req, res) => {
             SELECT ss.id, ss.name, ss.main_skill_id, ms.name as main_skill_name
             FROM sub_skills ss
             JOIN main_skills ms ON ss.main_skill_id = ms.id
+            WHERE ms.department_id = $1
             ORDER BY ms.name, ss.name
-        `);
+        `, [req.departmentId]);
 
         // Get all resource-sub-skill mappings
         const mappingsResult = await db.query(`
@@ -40,8 +41,9 @@ router.get('/', async (req, res) => {
             FROM resource_sub_skills rss
             JOIN sub_skills ss ON rss.sub_skill_id = ss.id
             JOIN main_skills ms ON ss.main_skill_id = ms.id
+            WHERE ms.department_id = $1
             ORDER BY rss.resource_id, ms.name, ss.name
-        `);
+        `, [req.departmentId]);
 
         // Build the data structure
         const resources = resourcesResult.rows.map(resource => {
@@ -145,11 +147,14 @@ router.post('/', async (req, res) => {
 
         await client.query('BEGIN');
 
-        // Clear existing data
-        await client.query('DELETE FROM resource_sub_skills');
-        await client.query('DELETE FROM resources');
-        await client.query('DELETE FROM sub_skills');
-        await client.query('DELETE FROM main_skills');
+        // Clear existing data for this department only
+        const deptId = req.departmentId;
+        await client.query(
+            `DELETE FROM resource_sub_skills WHERE resource_id IN (SELECT id FROM resources WHERE department_id = $1)`, [deptId]);
+        await client.query(`DELETE FROM resources WHERE department_id = $1`, [deptId]);
+        await client.query(
+            `DELETE FROM sub_skills WHERE main_skill_id IN (SELECT id FROM main_skills WHERE department_id = $1)`, [deptId]);
+        await client.query(`DELETE FROM main_skills WHERE department_id = $1`, [deptId]);
 
         // Collect all unique main skills and sub-skills
         const mainSkillsSet = new Set();
@@ -174,12 +179,12 @@ router.post('/', async (req, res) => {
         // Insert main skills
         const mainSkillIds = new Map(); // name -> id
         for (const mainSkillName of mainSkillsSet) {
-            const mainSkillId = mainSkillName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const mainSkillId = `${req.departmentSlug}-` + mainSkillName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
             mainSkillIds.set(mainSkillName, mainSkillId);
 
             await client.query(
-                'INSERT INTO main_skills (id, name) VALUES ($1, $2)',
-                [mainSkillId, mainSkillName]
+                'INSERT INTO main_skills (id, name, department_id) VALUES ($1, $2, $3)',
+                [mainSkillId, mainSkillName, req.departmentId]
             );
         }
 
@@ -203,8 +208,8 @@ router.post('/', async (req, res) => {
         for (const resource of resources) {
             // Insert resource
             await client.query(
-                'INSERT INTO resources (id, name, email) VALUES ($1, $2, $3)',
-                [resource.id, resource.name, resource.email || null]
+                'INSERT INTO resources (id, name, email, department_id) VALUES ($1, $2, $3, $4)',
+                [resource.id, resource.name, resource.email || null, req.departmentId]
             );
 
             // Insert resource sub-skill levels
