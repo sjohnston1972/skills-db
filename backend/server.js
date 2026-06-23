@@ -16,6 +16,7 @@ const exportRoutes = require('./routes/export');
 const trainingsRoutes = require('./routes/trainings');
 const insightsRoutes = require('./routes/insights');
 const settingsRoutes = require('./routes/settings');
+const departmentsRoutes = require('./routes/departments');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +46,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/trainings', trainingsRoutes);
 app.use('/api/insights', insightsRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/departments', departmentsRoutes);
 
 // Metadata endpoint
 app.get('/api/metadata', async (req, res) => {
