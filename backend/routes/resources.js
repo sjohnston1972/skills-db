@@ -18,7 +18,8 @@ function calculateMainSkillLevel(subSkills) {
 router.get('/', async (req, res) => {
     try {
         const result = await db.query(
-            'SELECT id, name, email, job_role, created_at, updated_at FROM resources ORDER BY name'
+            'SELECT id, name, email, job_role, created_at, updated_at FROM resources WHERE department_id = $1 ORDER BY name',
+            [req.departmentId]
         );
 
         res.json({
@@ -42,8 +43,8 @@ router.get('/:id', async (req, res) => {
 
         // Get resource
         const resourceResult = await db.query(
-            'SELECT id, name, email, job_role FROM resources WHERE id = $1',
-            [id]
+            'SELECT id, name, email, job_role FROM resources WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         if (resourceResult.rows.length === 0) {
@@ -128,8 +129,8 @@ router.post('/', async (req, res) => {
 
         // Check if ID already exists
         const existingResult = await db.query(
-            'SELECT id FROM resources WHERE id = $1',
-            [id]
+            'SELECT id FROM resources WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         if (existingResult.rows.length > 0) {
@@ -141,8 +142,8 @@ router.post('/', async (req, res) => {
 
         // Insert new resource
         const result = await db.query(
-            'INSERT INTO resources (id, name, email, password_hash, job_role) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, job_role, created_at',
-            [id, name, email || null, passwordHash, job_role || null]
+            'INSERT INTO resources (id, name, email, password_hash, job_role, department_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, email, job_role, created_at',
+            [id, name, email || null, passwordHash, job_role || null, req.departmentId]
         );
 
         // Update metadata
@@ -181,10 +182,10 @@ router.put('/:id', async (req, res) => {
             passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
         }
 
-        // Check if resource exists
+        // Check if resource exists in this department
         const existingResult = await client.query(
-            'SELECT id FROM resources WHERE id = $1',
-            [id]
+            'SELECT id FROM resources WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         if (existingResult.rows.length === 0) {
@@ -225,8 +226,8 @@ router.put('/:id', async (req, res) => {
                     const r = await client.query(`
                         SELECT ss.id FROM sub_skills ss
                         JOIN main_skills ms ON ss.main_skill_id = ms.id
-                        WHERE ms.name = $1 AND ss.name = $2
-                    `, [mainSkillName, subSkillName]);
+                        WHERE ms.name = $1 AND ss.name = $2 AND ms.department_id = $3
+                    `, [mainSkillName, subSkillName, req.departmentId]);
                     if (r.rows.length > 0) {
                         desired.set(r.rows[0].id, lvl);
                     } else {
@@ -281,8 +282,8 @@ router.put('/:id', async (req, res) => {
 
         // Fetch and return updated resource
         const updatedResult = await db.query(
-            'SELECT id, name, email, updated_at FROM resources WHERE id = $1',
-            [id]
+            'SELECT id, name, email, updated_at FROM resources WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         res.json({
@@ -307,10 +308,10 @@ router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Check if resource exists
+        // Check if resource exists in this department
         const existingResult = await db.query(
-            'SELECT id FROM resources WHERE id = $1',
-            [id]
+            'SELECT id FROM resources WHERE id = $1 AND department_id = $2',
+            [id, req.departmentId]
         );
 
         if (existingResult.rows.length === 0) {
@@ -321,7 +322,7 @@ router.delete('/:id', async (req, res) => {
         }
 
         // Delete resource (cascades to resource_sub_skills)
-        await db.query('DELETE FROM resources WHERE id = $1', [id]);
+        await db.query('DELETE FROM resources WHERE id = $1 AND department_id = $2', [id, req.departmentId]);
 
         // Update metadata
         await db.query(
