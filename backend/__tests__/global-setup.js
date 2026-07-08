@@ -33,6 +33,10 @@ module.exports = async () => {
     });
 
     try {
+        // Fresh schema every run: some migrations (ADD CONSTRAINT in 009)
+        // are not idempotent, so re-running them on a populated schema fails.
+        await client.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+
         // Migrations GRANT to skillsuser; make sure the role exists in the
         // throwaway test cluster.
         await client.query(`
