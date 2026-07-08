@@ -57,10 +57,16 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// Metadata endpoint (not department-scoped, so mounted before the middleware)
+// Metadata endpoint (not department-scoped, so mounted before the middleware).
+// Secret keys (stored API keys) are excluded — the Settings API only ever
+// reports their presence, never the value.
+const { API_KEY_META_KEYS } = require('./routes/settings');
 app.get('/api/metadata', async (req, res) => {
     try {
-        const result = await db.query('SELECT key, value FROM metadata ORDER BY key');
+        const result = await db.query(
+            'SELECT key, value FROM metadata WHERE key <> ALL($1) ORDER BY key',
+            [API_KEY_META_KEYS]
+        );
 
         // Convert to key-value object with camelCase keys
         const metadata = {};

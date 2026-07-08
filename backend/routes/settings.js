@@ -121,3 +121,6 @@ async function getApiKey(name) {
 module.exports = router;
 module.exports.getApiKey = getApiKey;
 module.exports.getFlag = getFlag;
+// Single source of truth for which metadata keys hold secrets — consumed by
+// the /api/metadata denylist in server.js.
+module.exports.API_KEY_META_KEYS = API_KEY_META_KEYS;
