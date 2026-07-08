@@ -32,23 +32,32 @@ app.use((req, res, next) => {
     next();
 });
 
-const { departmentMiddleware } = require('./middleware/department');
-app.use('/api', departmentMiddleware(db));
+// Health check endpoint. Mounted BEFORE the department middleware so it
+// stays functional even when the departments table is missing (e.g. right
+// after a schema reset) — the Docker HEALTHCHECK depends on it.
+app.get('/api/health', async (req, res) => {
+    try {
+        // Check database connection
+        await db.query('SELECT 1');
 
-// API Routes
-app.use('/api/data', dataRoutes);
-app.use('/api/resources', resourcesRoutes);
-app.use('/api/skills', skillsRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/staffing', staffingRoutes);
-app.use('/api/data-quality', dataQualityRoutes);
-app.use('/api/export', exportRoutes);
-app.use('/api/trainings', trainingsRoutes);
-app.use('/api/insights', insightsRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/departments', departmentsRoutes);
+        res.json({
+            success: true,
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            database: 'connected'
+        });
+    } catch (error) {
+        res.status(503).json({
+            success: false,
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            database: 'disconnected',
+            error: error.message
+        });
+    }
+});
 
-// Metadata endpoint
+// Metadata endpoint (not department-scoped, so mounted before the middleware)
 app.get('/api/metadata', async (req, res) => {
     try {
         const result = await db.query('SELECT key, value FROM metadata ORDER BY key');
@@ -74,28 +83,21 @@ app.get('/api/metadata', async (req, res) => {
     }
 });
 
-// Health check endpoint
-app.get('/api/health', async (req, res) => {
-    try {
-        // Check database connection
-        await db.query('SELECT 1');
+const { departmentMiddleware } = require('./middleware/department');
+app.use('/api', departmentMiddleware(db));
 
-        res.json({
-            success: true,
-            status: 'healthy',
-            timestamp: new Date().toISOString(),
-            database: 'connected'
-        });
-    } catch (error) {
-        res.status(503).json({
-            success: false,
-            status: 'unhealthy',
-            timestamp: new Date().toISOString(),
-            database: 'disconnected',
-            error: error.message
-        });
-    }
-});
+// API Routes
+app.use('/api/data', dataRoutes);
+app.use('/api/resources', resourcesRoutes);
+app.use('/api/skills', skillsRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/staffing', staffingRoutes);
+app.use('/api/data-quality', dataQualityRoutes);
+app.use('/api/export', exportRoutes);
+app.use('/api/trainings', trainingsRoutes);
+app.use('/api/insights', insightsRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/departments', departmentsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -195,7 +197,10 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-// Start the server
-startServer();
+// Start the server only when run directly (`npm start`). Tests require()
+// this module to get the app without opening a port or running migrations.
+if (require.main === module) {
+    startServer();
+}
 
 module.exports = app;
