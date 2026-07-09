@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skills Matrix — Product Tour (Engineering)</title>
+<style>
+  :root{
+    --accent:#4d4dff; --accent-2:#00a3ff; --ink:#1a1d29; --muted:#5b6172;
+    --line:#e7e9f0; --bg:#f6f7fb; --card:#ffffff; --good:#10b981; --warn:#f5a524; --bad:#ef4444;
+    --radius:14px; --shadow:0 10px 30px rgba(20,25,60,.10); --shadow-sm:0 2px 8px rgba(20,25,60,.06);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+  /* top nav */
+  .topbar{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.85);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line)}
+  .topbar .wrap{display:flex;align-items:center;gap:18px;height:58px}
+  .brand{font-weight:800;letter-spacing:-.02em}
+  .brand .dot{display:inline-block;width:9px;height:9px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));margin-right:8px;vertical-align:middle}
+  .navlinks{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .navlinks a{font-size:.82rem;color:var(--muted);padding:6px 10px;border-radius:8px}
+  .navlinks a:hover{background:var(--bg);color:var(--ink)}
+
+  /* hero */
+  .hero{padding:80px 0 56px;text-align:center;
+    background:radial-gradient(1200px 400px at 50% -10%,rgba(77,77,255,.10),transparent 70%)}
+  .pill{display:inline-block;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--accent);background:rgba(77,77,255,.10);border:1px solid rgba(77,77,255,.25);
+    padding:5px 12px;border-radius:999px;margin-bottom:18px}
+  .hero h1{font-size:2.8rem;line-height:1.1;margin:.2em 0;letter-spacing:-.03em}
+  .hero h1 span{background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{font-size:1.12rem;color:var(--muted);max-width:680px;margin:14px auto 0}
+  .hero .meta{margin-top:22px;font-size:.85rem;color:var(--muted)}
+  .hero .meta b{color:var(--ink)}
+
+  /* feature sections */
+  section.feature{padding:52px 0;border-top:1px solid var(--line)}
+  .kicker{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+  .kicker .num{font-size:.8rem;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none}
+  .kicker h2{font-size:1.6rem;margin:0;letter-spacing:-.02em}
+  .lead{color:var(--muted);font-size:1.04rem;max-width:760px;margin:0 0 22px}
+  ul.feat{list-style:none;padding:0;margin:0 0 22px;display:grid;grid-template-columns:1fr 1fr;gap:10px 26px}
+  ul.feat li{position:relative;padding-left:24px;color:#33384a;font-size:.95rem}
+  ul.feat li::before{content:"";position:absolute;left:0;top:.55em;width:9px;height:9px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+  @media(max-width:640px){ul.feat{grid-template-columns:1fr}.hero h1{font-size:2rem}}
+
+  /* browser-framed screenshots */
+  figure.shot{margin:0 0 8px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);
+    box-shadow:var(--shadow);background:#fff}
+  figure.shot .bar{display:flex;align-items:center;gap:6px;padding:9px 12px;background:#f0f1f6;border-bottom:1px solid var(--line)}
+  figure.shot .bar i{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .bar .r{background:#ff5f57}.bar .y{background:#febc2e}.bar .g{background:#28c840}
+  figure.shot .bar span{margin-left:10px;font-size:.74rem;color:#8b90a0}
+  figure.shot img{display:block;width:100%;height:auto}
+  figcaption{font-size:.84rem;color:var(--muted);text-align:center;margin-top:10px}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:760px){.pair{grid-template-columns:1fr}}
+  .tag{display:inline-block;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+    padding:3px 9px;border-radius:999px;margin-left:8px;vertical-align:middle}
+  .tag.modal{color:#7a5b00;background:linear-gradient(135deg,#ffd86b,#f5a524)}
+  .tag.ai{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+
+  /* security section */
+  .verdict{display:flex;align-items:center;gap:14px;background:#fff5f5;border:1px solid #f6c2c2;
+    border-left:5px solid var(--bad);border-radius:12px;padding:16px 20px;margin:0 0 26px;box-shadow:var(--shadow-sm)}
+  .verdict .big{font-size:1.6rem}
+  .verdict b{color:#b91c1c}
+  .epigraph{font-style:italic;color:var(--muted);border-left:3px solid var(--line);padding-left:14px;margin:0 0 26px}
+  .sevgroup{margin:0 0 22px}
+  .sevhead{display:flex;align-items:center;gap:10px;font-weight:800;margin:0 0 12px;font-size:1.05rem}
+  .sevdot{width:12px;height:12px;border-radius:50%;flex:none}
+  .crit .sevdot{background:#ef4444}.high .sevdot{background:#f5a524}.med .sevdot{background:#eab308}.good .sevdot{background:#10b981}
+  .crit .sevhead{color:#b91c1c}.high .sevhead{color:#b45309}.med .sevhead{color:#a16207}.good .sevhead{color:#047857}
+  .findings{display:grid;gap:12px}
+  .finding{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 16px;box-shadow:var(--shadow-sm)}
+  .finding.crit{border-left:4px solid #ef4444}.finding.high{border-left:4px solid #f5a524}.finding.med{border-left:4px solid #eab308}
+  .finding h4{margin:0 0 4px;font-size:.98rem}
+  .finding p{margin:0;color:#444a5c;font-size:.9rem}
+  .finding code{background:#f0f1f6;border-radius:4px;padding:.05rem .35rem;font-size:.84em}
+  .goodbox{background:#f1fbf6;border:1px solid #bfe8d4;border-radius:11px;padding:14px 18px}
+  .goodbox ul{margin:0;padding-left:20px}.goodbox li{font-size:.92rem;color:#33503f;margin:.2em 0}
+  .fixlist{counter-reset:fix;list-style:none;padding:0;margin:6px 0 0}
+  .fixlist li{position:relative;padding:12px 14px 12px 52px;background:var(--card);border:1px solid var(--line);
+    border-radius:11px;margin-bottom:10px;font-size:.95rem;box-shadow:var(--shadow-sm)}
+  .fixlist li::before{counter-increment:fix;content:counter(fix);position:absolute;left:14px;top:50%;transform:translateY(-50%);
+    width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:.8rem;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+  footer{padding:50px 0 70px;text-align:center;color:var(--muted);font-size:.85rem;border-top:1px solid var(--line)}
+  .callout{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);
+    border-radius:10px;padding:14px 18px;margin:20px 0;font-size:.92rem;box-shadow:var(--shadow-sm)}
+</style>
+</head>
+<body>
+
+<div class="topbar"><div class="wrap">
+  <div class="brand"><span class="dot"></span>Skills Matrix</div>
+  <nav class="navlinks">
+    <a href="#dashboard">Dashboard</a>
+    <a href="#heatmap">Heatmap</a>
+    <a href="#resources">Resources</a>
+    <a href="#skills">Skills</a>
+    <a href="#radar">Radar</a>
+    <a href="#matching">Matching</a>
+    <a href="#training">Training</a>
+    <a href="#insights">Insights</a>
+    <a href="#ai">AI Assistant</a>
+    <a href="#security">Security</a>
+  </nav>
+</div></div>
+
+<header class="hero"><div class="wrap">
+  <span class="pill">Product Tour · Engineering Department</span>
+  <h1>Know exactly <span>what your team can do</span></h1>
+  <p>The Skills Matrix tracks every engineer's capabilities, certifications and training in one place —
+     turning scattered spreadsheets into live capability intelligence, project matching and AI‑assisted insight.</p>
+  <div class="meta">Multi‑department · This tour uses the <b>Engineering</b> department &nbsp;·&nbsp; 25 people · 17 skill areas · 233 sub‑skills · 33 certifications tracked</div>
+</div></header>
+
+<main class="wrap">
+
+  <!-- 1 Dashboard -->
+  <section class="feature" id="dashboard">
+    <div class="kicker"><div class="num">1</div><h2>Team Overview Dashboard</h2></div>
+    <p class="lead">A single glance at team health: headline metrics, a capability radar, where the strengths and
+       gaps are, and a live feed of recent wins.</p>
+    <ul class="feat">
+      <li>Headline KPIs — total resources, skills tracked, average level, expert (L4+) count</li>
+      <li>Single Points of Failure flag skills with only one (or no) expert</li>
+      <li>Technical / non‑technical capability radar of the whole team</li>
+      <li>Top 5 strengths and Top 5 gaps, ranked automatically</li>
+      <li>Recent Wins feed — new certifications &amp; joiners, elite certs get extra flair</li>
+      <li>Expiring‑certification alert banner (auto‑hides when nothing is due)</li>
+    </ul>
+    <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Engineering Skills Matrix — Dashboard</span></div>
+      <img src="img/01-dashboard.png" alt="Team overview dashboard"></figure>
+    <figcaption>The Engineering dashboard — note the 🏆 <b>Elite</b> CCIE recent win and the per‑department accent theme.</figcaption>
+  </section>
+
+  <!-- 2 Heatmap -->
+  <section class="feature" id="heatmap">
+    <div class="kicker"><div class="num">2</div><h2>Skills Heatmap</h2></div>
+    <p class="lead">Every person against every skill in one colour‑graded grid — spot concentrations, gaps and
+       outliers instantly, and drill from main skills down to individual sub‑skills.</p>
+    <ul class="feat">
+      <li>Sort by name or by average skill level</li>
+      <li>Toggle between main‑skill and sub‑skill granularity</li>
+      <li>Colour gradient from gap (red) to expert (green)</li>
+      <li>Inline edit mode to update ratings in place</li>
+    </ul>
+    <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Skills Heatmap</span></div>
+      <img src="img/02-heatmap.png" alt="Skills heatmap"></figure>
+  </section>
+
+  <!-- 3 Resources -->
+  <section class="feature" id="resources">
+    <div class="kicker"><div class="num">3</div><h2>Resource Management</h2></div>
+    <p class="lead">Browse the team as rich cards, then open any person to view their full capability profile or
+       edit their details and ratings.</p>
+    <ul class="feat">
+      <li>Searchable, filterable resource cards with role and quick stats</li>
+      <li><b>View</b> profile — per‑person skills radar, certifications &amp; full sub‑skill breakdown</li>
+      <li><b>Edit</b> — name, email, job role, password and every skill rating</li>
+      <li>Add and remove resources; changes are scoped to the active department</li>
+    </ul>
+    <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Resources</span></div>
+      <img src="img/03-resources.png" alt="Resources list"></figure>
+    <figcaption>The Resources view for Engineering.</figcaption>
+    <div class="pair" style="margin-top:24px">
+      <div>
+        <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Resource profile</span></div>
+          <img src="img/04-resource-view-modal.png" alt="Resource view modal"></figure>
+        <figcaption><span class="tag modal">Modal</span> View — capability radar + certifications with statuses &amp; expiry dates.</figcaption>
+      </div>
+      <div>
+        <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Edit resource</span></div>
+          <img src="img/05-resource-edit-modal.png" alt="Resource edit modal"></figure>
+        <figcaption><span class="tag modal">Modal</span> Edit — details and every sub‑skill rating in one place.</figcaption>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 Skills -->
+  <section class="feature" id="skills">
+    <div class="kicker"><div class="num">4</div><h2>Skills &amp; Sub‑Skills</h2></div>
+    <p class="lead">Define the capability framework itself — main skill areas, the sub‑skills beneath them, their
+       weight/demand and whether they're technical or non‑technical.</p>
+    <ul class="feat">
+      <li>Create, rename and delete skill categories</li>
+      <li>Manage the sub‑skills under each area as editable chips</li>
+      <li>Set a weight/demand (1–10) to prioritise critical skills</li>
+      <li>Technical vs non‑technical classification feeds the radars</li>
+    </ul>
+    <div class="pair">
+      <div>
+        <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Skills</span></div>
+          <img src="img/06-skills.png" alt="Skills view"></figure>
+        <figcaption>The skill framework for Engineering.</figcaption>
+      </div>
+      <div>
+        <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Edit skill</span></div>
+          <img src="img/07-skill-edit-modal.png" alt="Edit skill modal"></figure>
+        <figcaption><span class="tag modal">Modal</span> Edit Skill — manage sub‑skills, weight and type.</figcaption>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 Radar -->
+  <section class="feature" id="radar">
+    <div class="kicker"><div class="num">5</div><h2>Custom Radar</h2></div>
+    <p class="lead">Pick any combination of sub‑skills and instantly plot the team's average capability across
+       them — and see which people best fit that exact profile.</p>
+    <ul class="feat">
+      <li>Search and multi‑select sub‑skills across every category</li>
+      <li>Live radar of team‑average level on the chosen axes</li>
+      <li><b>Suitable Resources</b> ranked by average level across the selection</li>
+      <li>Per‑person, per‑sub‑skill levels for quick comparison</li>
+    </ul>
+    <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Custom Radar</span></div>
+      <img src="img/08-custom-radar.png" alt="Custom radar with selected skills"></figure>
+    <figcaption>AWS sub‑skills selected — the radar and ranked candidate list update live.</figcaption>
+  </section>
+
+  <!-- 6 Matching -->
+  <section class="feature" id="matching">
+    <div class="kicker"><div class="num">6</div><h2>Project Matching</h2></div>
+    <p class="lead">Describe a project's requirements and the matcher finds the people who best fit — scored against
+       the skills you need.</p>
+    <ul class="feat">
+      <li>Enter required skills or a free‑text brief</li>
+      <li>Ranked team members with match scores</li>
+      <li>Highlights strengths and shortfalls per candidate</li>
+      <li>Works entirely within the active department's data</li>
+    </ul>
+    <div class="pair">
+      <div>
+        <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Project Matching</span></div>
+          <img src="img/09-project-matching.png" alt="Project matching"></figure>
+        <figcaption>Define the requirements.</figcaption>
+      </div>
+      <div>
+        <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Match results</span></div>
+          <img src="img/09b-project-matching-results.png" alt="Project matching results"></figure>
+        <figcaption>Ranked candidates for the brief.</figcaption>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 Training -->
+  <section class="feature" id="training">
+    <div class="kicker"><div class="num">7</div><h2>Training &amp; Certifications</h2></div>
+    <p class="lead">A full certification catalogue with per‑person assignments, statuses and expiry tracking —
+       so nothing lapses unnoticed.</p>
+    <ul class="feat">
+      <li>Catalogue of certifications &amp; courses by vendor and category</li>
+      <li>Assign to people with status: planned · in‑progress · achieved · expired</li>
+      <li>Target dates, completion dates and expiry dates</li>
+      <li>Expiry tracking feeds the dashboard alert banner</li>
+    </ul>
+    <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Training</span></div>
+      <img src="img/10-training.png" alt="Training and certifications"></figure>
+  </section>
+
+  <!-- 8 Insights -->
+  <section class="feature" id="insights">
+    <div class="kicker"><div class="num">8</div><h2>Team Insights</h2></div>
+    <p class="lead">Auto‑generated, plain‑English observations about the team's profile, risks and opportunities —
+       computed locally from your data.</p>
+    <ul class="feat">
+      <li>Recommended actions &amp; bus‑factor (single‑expert) risks</li>
+      <li>Highest demand‑deficit skills and coverage imbalance</li>
+      <li>Certification pipeline &amp; specialists‑vs‑generalists view</li>
+      <li>Quickest wins for upskilling and resources missing ratings</li>
+    </ul>
+    <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Insights</span></div>
+      <img src="img/11-insights.png" alt="Team insights"></figure>
+  </section>
+
+  <!-- 9 AI -->
+  <section class="feature" id="ai">
+    <div class="kicker"><div class="num">9</div><h2>AI Assistant <span class="tag ai">AI</span></h2></div>
+    <p class="lead">A built‑in chatbot answers natural‑language questions about your team and project fit — with
+       rich, readable formatting that highlights the people and skills it mentions.</p>
+    <ul class="feat">
+      <li>Ask about strengths, gaps, certifications or "who can do X?"</li>
+      <li>Answers grounded in the active department's live data</li>
+      <li><b>Resource names</b> and <b>skills</b> highlighted inline for scannability</li>
+      <li>Markdown formatting — bold, lists and structure</li>
+    </ul>
+    <div class="pair">
+      <div>
+        <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Assistant</span></div>
+          <img src="img/12-chatbot-open.png" alt="Chatbot open"></figure>
+        <figcaption>Suggested questions to get started.</figcaption>
+      </div>
+      <div>
+        <figure class="shot"><div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Assistant — answer</span></div>
+          <img src="img/13-chatbot-conversation.png" alt="Chatbot conversation with rich formatting"></figure>
+        <figcaption>Rich formatting: highlighted names &amp; skills, bold and lists.</figcaption>
+      </div>
+    </div>
+    <div class="callout">Every department gets its own people, skills, certifications and a subtle accent theme —
+      switch departments from the header and the entire tool (and this assistant) re‑scopes instantly.</div>
+  </section>
+
+  <!-- 10 Security -->
+  <section class="feature" id="security">
+    <div class="kicker"><div class="num">10</div><h2>Security Posture <span class="tag" style="color:#fff;background:#ef4444">Candid Review</span></h2></div>
+    <p class="epigraph">A security architect's assessment, monocle firmly in place. The short version: a genuinely nice
+       <b>internal</b> tool — treat it as exactly that.</p>
+
+    <div class="verdict">
+      <span class="big">🔴</span>
+      <div><b>Verdict — not for anything you'd miss if it leaked.</b><br>
+        Secure enough as an internal, low‑sensitivity tool behind a real network boundary; <b>not</b> as an internet‑facing app.</div>
+    </div>
+
+    <div class="sevgroup crit">
+      <div class="sevhead"><span class="sevdot"></span>Critical — the "why is this on a network" tier</div>
+      <div class="findings">
+        <div class="finding crit"><h4>The entire API is unauthenticated</h4>
+          <p>Only static <code>.js</code>/<code>.css</code>/<code>.html</code> sit behind basic auth. Every <code>/api/*</code> route —
+             including <code>POST /api/data</code> (wipes &amp; rebuilds a department) and <code>DELETE /api/resources/:id</code> —
+             answers anyone who can reach the port, with no credentials. The login is theatre.</p></div>
+        <div class="finding crit"><h4>Secrets baked into the Docker image</h4>
+          <p><code>COPY .env</code> bakes live Anthropic/OpenAI/xAI/DeepSeek/Cloudflare keys into a committed image layer, in plaintext.
+             Treat them as burned — rotate all of them.</p></div>
+        <div class="finding crit"><h4>Plaintext credentials in the repo</h4>
+          <p><code>creds.txt</code> holds <code>admin / skillsadmin2024</code>; <code>.htpasswd</code> ships alongside it.</p></div>
+        <div class="finding crit"><h4>PostgreSQL set to <code>trust</code>, all interfaces</h4>
+          <p><code>host all all 0.0.0.0/0 trust</code>, <code>listen_addresses='*'</code>, password <code>changeme123</code>.
+             Saved today only by the port not being published.</p></div>
+      </div>
+    </div>
+
+    <div class="sevgroup high">
+      <div class="sevhead"><span class="sevdot"></span>High — the "I'm writing this down" tier</div>
+      <div class="findings">
+        <div class="finding high"><h4>Unauthenticated + AI = an open tab on your bill</h4>
+          <p>Anyone can drive the server‑side LLM key indefinitely. No rate limiting, no quotas.</p></div>
+        <div class="finding high"><h4>Departments are not a security boundary</h4>
+          <p>The active department is a client‑controlled <code>X‑Department</code> header. One trust level exists: "can reach the box."</p></div>
+        <div class="finding high"><h4>Wide‑open CORS</h4>
+          <p><code>app.use(cors())</code> invites every origin to a party that already has no bouncer.</p></div>
+        <div class="finding high"><h4>Stored‑XSS lineage</h4>
+          <p>Two <code>innerHTML</code> injection paths (chat + switcher) were patched; the codebase leans on <code>innerHTML</code> and warrants a fuller audit.</p></div>
+      </div>
+    </div>
+
+    <div class="sevgroup med">
+      <div class="sevhead"><span class="sevdot"></span>Medium — the "tut, tut" tier</div>
+      <div class="findings">
+        <div class="finding med"><h4>No TLS in the stack itself</h4>
+          <p>Basic‑auth credentials travel base64‑encoded every request, relying on an assumed external TLS terminator.</p></div>
+        <div class="finding med"><h4>Other niggles</h4>
+          <p>No CSRF tokens (mitigated by no cookie session) · outstanding <code>npm audit</code> findings · SQL + values logged to stdout.</p></div>
+      </div>
+    </div>
+
+    <div class="sevgroup good">
+      <div class="sevhead"><span class="sevdot"></span>Credit where it's grudgingly due</div>
+      <div class="goodbox"><ul>
+        <li><b>SQL is parameterised</b> throughout (<code>$1, $2…</code>) — no injection.</li>
+        <li>Resource passwords use <b>bcrypt</b>.</li>
+        <li>The destructive <code>POST /api/data</code> is at least scoped to a single department.</li>
+      </ul></div>
+    </div>
+
+    <div class="sevgroup">
+      <div class="sevhead" style="color:var(--ink)">Remediation — in priority order</div>
+      <ol class="fixlist">
+        <li><b>Put <code>/api/*</code> behind auth.</b> Nothing else matters until this is done.</li>
+        <li><b>Rotate every key</b>, stop <code>COPY .env</code> into the image, purge <code>creds.txt</code> + <code>.htpasswd</code> from git history.</li>
+        <li><b>Fix Postgres</b> — <code>scram‑sha‑256</code>, a real password, bind to localhost only.</li>
+        <li><b>Rate‑limit</b> the AI endpoints, enforce <b>TLS</b>, and tighten <b>CORS</b> to known origins.</li>
+      </ol>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Skills Matrix — capability tracking, project matching &amp; AI insight.<br>
+  Product tour generated from the live <b>Engineering</b> department.
+</footer>
+
+</body>
+</html>

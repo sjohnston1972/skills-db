@@ -1,5 +1,4 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
@@ -16,12 +15,13 @@ const exportRoutes = require('./routes/export');
 const trainingsRoutes = require('./routes/trainings');
 const insightsRoutes = require('./routes/insights');
 const settingsRoutes = require('./routes/settings');
+const departmentsRoutes = require('./routes/departments');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
+// Middleware. No CORS: the frontend is served same-origin by nginx, so
+// cross-origin API access is deliberately not enabled (#13).
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -31,22 +31,41 @@ app.use((req, res, next) => {
     next();
 });
 
-// API Routes
-app.use('/api/data', dataRoutes);
-app.use('/api/resources', resourcesRoutes);
-app.use('/api/skills', skillsRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/staffing', staffingRoutes);
-app.use('/api/data-quality', dataQualityRoutes);
-app.use('/api/export', exportRoutes);
-app.use('/api/trainings', trainingsRoutes);
-app.use('/api/insights', insightsRoutes);
-app.use('/api/settings', settingsRoutes);
+// Health check endpoint. Mounted BEFORE the department middleware so it
+// stays functional even when the departments table is missing (e.g. right
+// after a schema reset) — the Docker HEALTHCHECK depends on it.
+app.get('/api/health', async (req, res) => {
+    try {
+        // Check database connection
+        await db.query('SELECT 1');
 
-// Metadata endpoint
+        res.json({
+            success: true,
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            database: 'connected'
+        });
+    } catch (error) {
+        res.status(503).json({
+            success: false,
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            database: 'disconnected',
+            error: error.message
+        });
+    }
+});
+
+// Metadata endpoint (not department-scoped, so mounted before the middleware).
+// Secret keys (stored API keys) are excluded — the Settings API only ever
+// reports their presence, never the value.
+const { API_KEY_META_KEYS } = require('./routes/settings');
 app.get('/api/metadata', async (req, res) => {
     try {
-        const result = await db.query('SELECT key, value FROM metadata ORDER BY key');
+        const result = await db.query(
+            'SELECT key, value FROM metadata WHERE key <> ALL($1) ORDER BY key',
+            [API_KEY_META_KEYS]
+        );
 
         // Convert to key-value object with camelCase keys
         const metadata = {};
@@ -69,28 +88,29 @@ app.get('/api/metadata', async (req, res) => {
     }
 });
 
-// Health check endpoint
-app.get('/api/health', async (req, res) => {
-    try {
-        // Check database connection
-        await db.query('SELECT 1');
+// Reset rebuilds the whole schema, so like health/metadata it must not
+// depend on the department middleware — that middleware queries a table
+// reset may be about to (re)create. Admin auth + confirm token enforced
+// by the handler (#12, #5/#15).
+const { resetHandler } = require('./routes/data');
+const { verifyAdminAuth } = require('./middleware/auth');
+app.post('/api/data/reset', verifyAdminAuth, resetHandler);
 
-        res.json({
-            success: true,
-            status: 'healthy',
-            timestamp: new Date().toISOString(),
-            database: 'connected'
-        });
-    } catch (error) {
-        res.status(503).json({
-            success: false,
-            status: 'unhealthy',
-            timestamp: new Date().toISOString(),
-            database: 'disconnected',
-            error: error.message
-        });
-    }
-});
+const { departmentMiddleware } = require('./middleware/department');
+app.use('/api', departmentMiddleware(db));
+
+// API Routes
+app.use('/api/data', dataRoutes);
+app.use('/api/resources', resourcesRoutes);
+app.use('/api/skills', skillsRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/staffing', staffingRoutes);
+app.use('/api/data-quality', dataQualityRoutes);
+app.use('/api/export', exportRoutes);
+app.use('/api/trainings', trainingsRoutes);
+app.use('/api/insights', insightsRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/departments', departmentsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -146,22 +166,10 @@ const startServer = async () => {
         // be applied manually as the postgres superuser; this loop just
         // surfaces what's outstanding.
         try {
-            const fs = require('fs');
-            const path = require('path');
-            const migrationsDir = path.join(__dirname, 'migrations');
-            if (fs.existsSync(migrationsDir)) {
-                const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
-                for (const f of files) {
-                    const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
-                    const statements = sql.split(';').map(s => s.trim()).filter(s => s && !s.startsWith('--'));
-                    try {
-                        for (const stmt of statements) await db.query(stmt);
-                        console.log(`Migration ${f}: ok (${statements.length} statements).`);
-                    } catch (e) {
-                        console.warn(`Migration ${f}: ${e.message} — run manually as 'postgres' if needed.`);
-                    }
-                }
-            }
+            const { applyMigrations } = require('./lib/migrations');
+            const { applied, failed } = await applyMigrations(db.query);
+            applied.forEach(f => console.log(`Migration ${f}: ok.`));
+            failed.forEach(f => console.warn(`Migration ${f.file}: ${f.error} — run manually as 'postgres' if needed.`));
         } catch (mErr) {
             console.error('Migration runner failed (non-fatal):', mErr.message);
         }
@@ -190,7 +198,10 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-// Start the server
-startServer();
+// Start the server only when run directly (`npm start`). Tests require()
+// this module to get the app without opening a port or running migrations.
+if (require.main === module) {
+    startServer();
+}
 
 module.exports = app;

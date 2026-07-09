@@ -38,6 +38,28 @@ PostgreSQL-backed skills matrix application with Node.js/Express API backend, se
 
 ## Quick Start
 
+### 0. One-Time Setup (fresh clone)
+
+The image build needs a `.htpasswd` file (basic-auth users for nginx). It is
+gitignored, so create it first:
+
+```bash
+# With apache2-utils installed:
+htpasswd -Bc .htpasswd admin
+
+# Or without installing anything:
+docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'yourpassword' > .htpasswd
+```
+
+For local development outside Docker (`npm start`), copy the env template:
+
+```bash
+cp .env.example .env
+```
+
+The Docker image does **not** include `.env` — runtime defaults come from the
+Dockerfile's `ENV` block, so no `.env` is needed to build or run the container.
+
 ### 1. Build the Image
 
 ```bash
@@ -348,6 +370,26 @@ docker volume rm skills_db_data
 3. Consider adding authentication to the API
 
 ## Development
+
+### Running Tests
+
+The jest suite (unit + API integration tests) needs a disposable PostgreSQL
+on port 55433 — it drops and recreates the schema every run, so never point
+it at real data:
+
+```bash
+docker run -d --name skillsdb-test-pg \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=skills_matrix_test \
+  -p 55433:5432 postgres:16-alpine
+
+npm install
+npm test
+```
+
+Defaults (override via env): `DB_HOST=localhost DB_PORT=55433
+DB_NAME=skills_matrix_test DB_USER=postgres DB_PASSWORD=postgres
+HTPASSWD_FILE=backend/__tests__/fixtures/htpasswd`.
 
 ### Run Backend Locally (without Docker)
 

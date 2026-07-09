@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+// Mutations below are admin-only. The GETs stay open at the Express layer —
+// they only ever report presence/booleans, and nginx basic auth covers them.
+const { verifyAdminAuth } = require('../middleware/auth');
 
 const API_KEY_META_KEYS = ['anthropic_api_key'];
 
@@ -43,7 +46,7 @@ router.get('/api-keys', async (req, res) => {
 });
 
 /** PUT /api/settings/api-keys/:name  body {value}  */
-router.put('/api-keys/:name', async (req, res) => {
+router.put('/api-keys/:name', verifyAdminAuth, async (req, res) => {
     try {
         const { name } = req.params;
         const { value } = req.body || {};
@@ -65,7 +68,7 @@ router.put('/api-keys/:name', async (req, res) => {
 });
 
 /** DELETE /api/settings/api-keys/:name — revoke (clear) the stored key  */
-router.delete('/api-keys/:name', async (req, res) => {
+router.delete('/api-keys/:name', verifyAdminAuth, async (req, res) => {
     try {
         const { name } = req.params;
         if (!API_KEY_META_KEYS.includes(name)) {
@@ -90,7 +93,7 @@ router.get('/flags', async (req, res) => {
 });
 
 /** PUT /api/settings/flags/:name  body { value: boolean } — set a flag. */
-router.put('/flags/:name', async (req, res) => {
+router.put('/flags/:name', verifyAdminAuth, async (req, res) => {
     try {
         const { name } = req.params;
         if (!FLAG_KEYS.includes(name)) {
@@ -121,3 +124,6 @@ async function getApiKey(name) {
 module.exports = router;
 module.exports.getApiKey = getApiKey;
 module.exports.getFlag = getFlag;
+// Single source of truth for which metadata keys hold secrets — consumed by
+// the /api/metadata denylist in server.js.
+module.exports.API_KEY_META_KEYS = API_KEY_META_KEYS;

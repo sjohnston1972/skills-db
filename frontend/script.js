@@ -36,6 +36,35 @@
 
 const API_BASE = '/api';
 
+// ==================== DEPARTMENT CONTEXT ====================
+// The app is multi-department. The active department slug is stored per-browser
+// and sent on every API request via the X-Department header so the backend
+// scopes data to it. Default to projects-team.
+const ACTIVE_DEPT_KEY = 'activeDepartment';
+const DEFAULT_DEPT_SLUG = 'projects-team';
+function getActiveDepartment() {
+    return localStorage.getItem(ACTIVE_DEPT_KEY) || DEFAULT_DEPT_SLUG;
+}
+function setActiveDepartment(slug) {
+    localStorage.setItem(ACTIVE_DEPT_KEY, slug);
+}
+
+// Inject X-Department on every same-origin /api request. script.js makes raw
+// fetch() calls in many places, so wrapping fetch is the single chokepoint.
+(function () {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+        try {
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            if (url.startsWith('/api') || url.startsWith(location.origin + '/api')) {
+                init = Object.assign({}, init);
+                init.headers = Object.assign({}, init.headers, { 'X-Department': getActiveDepartment() });
+            }
+        } catch (e) { /* fall through to a normal fetch */ }
+        return nativeFetch(input, init);
+    };
+})();
+
 // Staffing & Data Quality APIs (new — added in v3)
 const StaffingAPI = {
     async search(requirements, mode = 'match') {
@@ -57,6 +86,27 @@ const DataQualityAPI = {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();
         if (!j.success) throw new Error(j.error || 'data-quality fetch failed');
+        return j.data;
+    }
+};
+
+const DepartmentsAPI = {
+    async getAll() {
+        const r = await fetch(`${API_BASE}/departments`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'departments fetch failed');
+        return j.data;
+    },
+    async rename(id, name) {
+        const r = await fetch(`${API_BASE}/departments/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || 'rename failed');
         return j.data;
     }
 };
@@ -1303,6 +1353,84 @@ const STALE_DAYS = 365;
 
 function escapeHtml(s) {
     return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Build a single regex + lookup of the active department's known entities
+// (people, main skills, sub-skills) so the chatbot can highlight them.
+function buildChatEntityIndex() {
+    const data = dataCache;
+    if (!data) return { regex: null, map: null };
+    const map = new Map(); // lowercased name -> 'person' | 'skill'
+    const add = (name, type) => {
+        if (!name) return;
+        const k = name.toLowerCase();
+        if (!map.has(k)) map.set(k, type);
+    };
+    (data.resources || []).forEach(r => add(r.name, 'person'));
+    (data.skills || []).forEach(s => {
+        add(s.name, 'skill');
+        (s.subSkills || []).forEach(ss => add(ss.name, 'skill'));
+    });
+    if (!map.size) return { regex: null, map: null };
+    // Longest names first so the alternation prefers the most specific match.
+    const names = Array.from(map.keys()).sort((a, b) => b.length - a.length);
+    const regex = new RegExp('\\b(' + names.map(escapeRegExp).join('|') + ')\\b', 'gi');
+    return { regex, map };
+}
+
+// Inline markdown: bold, code, italic (run on already-escaped text).
+function chatInlineMd(s) {
+    return s
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, '$1<em>$2</em>');
+}
+
+// Render a bot message with rich formatting: lightweight markdown plus
+// highlighting of known resource / skill names. Input is untrusted, so we
+// escape first and only ever emit our own tags.
+function formatBotMessage(text) {
+    let src = escapeHtml(text || '');
+    const { regex, map } = buildChatEntityIndex();
+    if (regex) {
+        src = src.replace(regex, (m) => {
+            const type = map.get(m.toLowerCase());
+            return type ? `<span class="chat-ent chat-ent-${type}">${m}</span>` : m;
+        });
+    }
+    const lines = src.split('\n');
+    let html = '', listType = null, listItems = [], para = [];
+    const flushList = () => {
+        if (listType) { html += `<${listType}>${listItems.join('')}</${listType}>`; listType = null; listItems = []; }
+    };
+    const flushPara = () => {
+        if (para.length) { html += `<p>${para.join('<br>')}</p>`; para = []; }
+    };
+    for (const raw of lines) {
+        const line = raw.trim();
+        const bullet = line.match(/^[-•]\s+(.*)$/);
+        const numbered = line.match(/^\d+\.\s+(.*)$/);
+        if (bullet) {
+            flushPara();
+            if (listType !== 'ul') { flushList(); listType = 'ul'; }
+            listItems.push(`<li>${chatInlineMd(bullet[1])}</li>`);
+        } else if (numbered) {
+            flushPara();
+            if (listType !== 'ol') { flushList(); listType = 'ol'; }
+            listItems.push(`<li>${chatInlineMd(numbered[0].replace(/^\d+\.\s+/, ''))}</li>`);
+        } else if (!line) {
+            flushPara(); flushList();
+        } else {
+            flushList();
+            para.push(chatInlineMd(line));
+        }
+    }
+    flushPara(); flushList();
+    return html || escapeHtml(text || '');
 }
 
 function isStaleISO(iso) {
@@ -3927,9 +4055,86 @@ function showToast(message, type = 'info') {
     }, 3500);
 }
 
+// ==================== DEPARTMENT SWITCHER ====================
+
+let DEPARTMENTS = [];
+
+async function initDepartments() {
+    // Always apply the stored theme first, so even if the departments fetch
+    // fails the rest of app init (data load) is never blocked by this function.
+    const active = getActiveDepartment();
+    applyDepartmentTheme(active);
+    const sel = document.getElementById('deptSelect');
+    if (!sel) return;
+    try {
+        DEPARTMENTS = await DepartmentsAPI.getAll();
+        sel.innerHTML = '';
+        for (const d of DEPARTMENTS) {
+            const opt = document.createElement('option');
+            opt.value = d.slug;
+            opt.dataset.id = d.id;
+            opt.textContent = d.name;
+            if (d.slug === active) opt.selected = true;
+            sel.appendChild(opt);
+        }
+
+        const activeDept = DEPARTMENTS.find(d => d.slug === active);
+        if (activeDept) applyDepartmentBanner(activeDept.name);
+
+        sel.addEventListener('change', async () => {
+            setActiveDepartment(sel.value);
+            applyDepartmentTheme(sel.value);
+            const opt = sel.options[sel.selectedIndex];
+            if (opt) applyDepartmentBanner(opt.textContent);
+            await loadCurrentView();
+        });
+
+        const renameBtn = document.getElementById('deptRenameBtn');
+        if (renameBtn) renameBtn.addEventListener('click', renameActiveDepartment);
+    } catch (e) {
+        console.error('Failed to load departments (switcher disabled):', e);
+    }
+}
+
+function applyDepartmentTheme(slug) {
+    document.documentElement.setAttribute('data-department', slug);
+}
+
+// Reflect the active department in the main banner + browser tab title.
+function applyDepartmentBanner(name) {
+    if (!name) return;
+    const title = `${name} Skills Matrix`;
+    const h1 = document.getElementById('appTitle');
+    if (h1) h1.textContent = title;
+    document.title = title;
+}
+
+async function renameActiveDepartment() {
+    const sel = document.getElementById('deptSelect');
+    const opt = sel.options[sel.selectedIndex];
+    const id = opt.getAttribute('data-id');
+    const current = opt.textContent;
+    const name = window.prompt('Rename department:', current);
+    if (!name || !name.trim() || name.trim() === current) return;
+    const updated = await DepartmentsAPI.rename(id, name.trim());
+    opt.textContent = updated.name;
+    const d = DEPARTMENTS.find(x => String(x.id) === String(id));
+    if (d) d.name = updated.name;
+    // If the renamed department is the active one, refresh the banner.
+    if (opt.selected) applyDepartmentBanner(updated.name);
+}
+
+async function loadCurrentView() {
+    clearDataCache();
+    const activeBtn = document.querySelector('.nav-btn.active');
+    const viewName = activeBtn ? activeBtn.getAttribute('data-view') : 'dashboard';
+    await renderView(viewName);
+}
+
 // ==================== INITIALIZATION ====================
 
 document.addEventListener('DOMContentLoaded', async () => {
+    await initDepartments();
     await initializeData();
     setupNavigation();
     await updateLastUpdated();
@@ -4208,7 +4413,11 @@ function recentWinMarkup(it) {
     switch (it.type) {
         case 'cert': {
             const vendor = it.vendor ? `<span class="recent-wins-vendor">${escapeHtml(it.vendor)}</span>` : '';
-            return { icon: '🏅', text: `<strong>${escapeHtml(it.resource_name)}</strong> achieved ${escapeHtml(it.training_name)}${vendor}` };
+            // Elite certifications (e.g. CCIE) get extra flair.
+            const elite = /\bCCIE\b/i.test(it.training_name || '');
+            const icon = elite ? '🏆' : '🏅';
+            const flair = elite ? ' <span class="recent-wins-elite">★ Elite</span>' : '';
+            return { icon, text: `<strong>${escapeHtml(it.resource_name)}</strong> achieved ${escapeHtml(it.training_name)}${flair}${vendor}` };
         }
         case 'new_hire': {
             const role = it.job_role ? ` as ${escapeHtml(it.job_role)}` : '';
@@ -4225,7 +4434,8 @@ async function populateRecentWins() {
     try {
         const r = await fetch(`${API_BASE}/insights/recent-activity?within=${RECENT_WINS_DAYS}`);
         const j = await r.json();
-        const items = (j && j.data) ? j.data : [];
+        const all = (j && j.data) ? j.data : [];
+        const items = all.slice(0, 2); // show only the two most recent wins
         if (!items.length) { card.hidden = true; list.innerHTML = ''; return; }
         list.innerHTML = items.map(it => {
             const days = Number(it.days_ago);
@@ -5345,9 +5555,11 @@ const Chat = {
     renderHistory() {
         const body = document.getElementById('chatBody');
         if (!body) return;
-        body.innerHTML = this.history.map(m => `
-            <div class="chat-msg chat-msg-${m.role === 'user' ? 'user' : 'bot'}">${escapeHtml(m.content)}</div>
-        `).join('');
+        body.innerHTML = this.history.map(m => {
+            const isUser = m.role === 'user';
+            const content = isUser ? escapeHtml(m.content) : formatBotMessage(m.content);
+            return `<div class="chat-msg chat-msg-${isUser ? 'user' : 'bot'}">${content}</div>`;
+        }).join('');
         body.scrollTop = body.scrollHeight;
     },
 

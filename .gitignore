@@ -43,3 +43,5 @@ logs/
 # Playwright e2e snapshot dumps (artefacts from local test runs only)
 __*/
 __*.png
+# ...but the jest suite is real source, not an artefact
+!backend/__tests__/

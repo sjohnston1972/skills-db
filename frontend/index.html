@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Team Skills Matrix</title>
-    <link rel="stylesheet" href="styles.css?v=94">
+    <link rel="stylesheet" href="styles.css?v=96">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -12,7 +12,10 @@
     <header>
         <div class="container">
             <div class="header-brand">
-                <h1>Project Team Skills Matrix</h1>
+                <div class="header-title-row">
+                    <h1 id="appTitle">Project Team Skills Matrix</h1>
+                    <button id="deptRenameBtn" class="dept-rename-btn" title="Rename department" aria-label="Rename department">✎</button>
+                </div>
                 <p class="tagline">Team Capability Tracking &amp; Skills Gap Analysis</p>
             </div>
             <div class="header-actions">
@@ -24,6 +27,9 @@
                     </svg>
                     <span>Sign out</span>
                 </button>
+                <div class="dept-switcher">
+                  <select id="deptSelect" class="dept-select" aria-label="Department"></select>
+                </div>
                 <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
                     <!-- Moon icon (shown in dark mode) -->
                     <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -858,6 +864,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=130"></script>
+    <script src="script.js?v=133"></script>
 </body>
 </html>

@@ -1,13 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-
-function csvCell(v) {
-    if (v === null || v === undefined) return '';
-    const s = String(v);
-    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-    return s;
-}
+const { csvCell } = require('../lib/csv');
 
 /**
  * GET /api/export/csv
@@ -20,15 +14,18 @@ router.get('/csv', async (req, res) => {
             SELECT ss.id, ss.name AS sub_name, ms.name AS main_name
             FROM sub_skills ss
             JOIN main_skills ms ON ms.id = ss.main_skill_id
+            WHERE ms.department_id = $1
             ORDER BY ms.name, ss.name
-        `)).rows;
+        `, [req.departmentId])).rows;
 
         const resources = (await db.query(
-            `SELECT id, name, email FROM resources ORDER BY name`
+            `SELECT id, name, email FROM resources WHERE department_id = $1 ORDER BY name`,
+            [req.departmentId]
         )).rows;
 
         const ratings = (await db.query(
-            `SELECT resource_id, sub_skill_id, level FROM resource_sub_skills`
+            `SELECT resource_id, sub_skill_id, level FROM resource_sub_skills WHERE resource_id IN (SELECT id FROM resources WHERE department_id = $1)`,
+            [req.departmentId]
         )).rows;
 
         const byResource = new Map();

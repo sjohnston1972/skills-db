@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { getApiKey, getFlag } = require('./settings');
+// AI endpoints call out to Anthropic on the operator's key — auth required.
+const { verifyAdminAuth } = require('../middleware/auth');
+const { normaliseSpec, scoreSkillsAgainstSpec } = require('../lib/spec-matcher');
 
 /**
  * Rule-based team insights — no LLM required.
@@ -14,33 +17,39 @@ router.get('/', async (req, res) => {
 
         // Pull the data we need in one shot
         const [resourcesR, skillsR, ratingsR, certsR, expiringR] = await Promise.all([
-            db.query(`SELECT id, name FROM resources`),
+            db.query(`SELECT id, name FROM resources WHERE department_id = $1`, [req.departmentId]),
             db.query(`
                 SELECT ms.id, ms.name, ms.weight, ms.skill_type,
                        COUNT(DISTINCT ss.id) AS sub_skill_count
                 FROM main_skills ms
                 LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+                WHERE ms.department_id = $1
                 GROUP BY ms.id
-            `),
+            `, [req.departmentId]),
             db.query(`
                 SELECT rss.resource_id, ss.main_skill_id, rss.level, r.name AS resource_name, ms.name AS main_skill, ms.weight, ms.skill_type
                 FROM resource_sub_skills rss
                 JOIN sub_skills ss ON ss.id = rss.sub_skill_id
                 JOIN main_skills ms ON ms.id = ss.main_skill_id
                 JOIN resources r ON r.id = rss.resource_id
-            `),
+                WHERE ms.department_id = $1
+            `, [req.departmentId]),
             db.query(`
                 SELECT rt.status, COUNT(*)::int AS n
                 FROM resource_trainings rt
+                JOIN resources r ON r.id = rt.resource_id
+                WHERE r.department_id = $1
                 GROUP BY rt.status
-            `),
+            `, [req.departmentId]),
             db.query(`
                 SELECT COUNT(*)::int AS n
                 FROM resource_trainings rt
+                JOIN resources r ON r.id = rt.resource_id
                 WHERE rt.expiry_date IS NOT NULL
                   AND rt.expiry_date <= CURRENT_DATE + INTERVAL '90 days'
                   AND rt.status IN ('achieved', 'in-progress')
-            `),
+                  AND r.department_id = $1
+            `, [req.departmentId]),
         ]);
 
         const totalResources = resourcesR.rows.length;
@@ -265,13 +274,15 @@ router.get('/recent-activity', async (req, res) => {
                 JOIN trainings  t ON t.id = rt.training_id
                 WHERE rt.status = 'achieved' AND rt.completed_date IS NOT NULL
                   AND rt.completed_date >= CURRENT_DATE - ($1 || ' days')::interval
-            `, [within]),
+                  AND r.department_id = $2
+            `, [within, req.departmentId]),
             db.query(`
                 SELECT r.name AS resource_name, r.job_role,
                        (CURRENT_DATE - r.created_at::date) AS days_ago
                 FROM resources r
                 WHERE r.created_at >= CURRENT_DATE - ($1 || ' days')::interval
-            `, [within]),
+                  AND r.department_id = $2
+            `, [within, req.departmentId]),
         ]);
         const items = [
             ...certs.rows.map(c => ({
@@ -309,98 +320,14 @@ router.post('/match', async (req, res) => {
                    ARRAY_AGG(ss.name) FILTER (WHERE ss.name IS NOT NULL) AS sub_names
             FROM main_skills ms
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+            WHERE ms.department_id = $1
             GROUP BY ms.id
-        `);
+        `, [req.departmentId]);
 
-        // Synonym aliases: when the user uses a common shorthand or alternative
-        // name, rewrite it to the canonical phrase that appears in our skill
-        // catalogue. Add lower-case both sides.
-        const ALIASES = {
-            'dot1x': '802.1x',
-            '8021x': '802.1x',
-            'k8s': 'kubernetes',
-            'aad': 'azure ad',
-            'aks': 'azure kubernetes',
-            'eks': 'aws kubernetes',
-            'gke': 'gcp kubernetes',
-            'radius': 'cisco ise',           // closest catalogued skill
-            'tacacs': 'cisco ise',
-            'sdwan': 'sd-wan',
-            'sd wan': 'sd-wan',
-            'iam': 'identity',
-            'vlans': 'vlan',
-            'routers': 'routing',
-            'switches': 'switching',
-            'pmp': 'project management professional',
-            'csm': 'certified scrum master',
-        };
-
-        // Normalise spec: lowercase, non-alphanumeric → space, collapse runs.
-        // Apply alias substitutions on the normalised string, then re-normalise
-        // because aliases can introduce punctuation (e.g. "802.1x").
-        const normalise = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-        let normSpec = normalise(spec);
-        for (const [alias, canonical] of Object.entries(ALIASES)) {
-            const re = new RegExp('(^|\\s)' + alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)', 'g');
-            normSpec = normSpec.replace(re, `$1${canonical}$2`);
-        }
-        normSpec = normalise(normSpec);
-        const specWords = new Set(normSpec.split(' ').filter(Boolean));
-
-        // Common English filler that creates false positives (e.g. "and"
-        // would match a sub-skill containing "and").
-        const STOPWORDS = new Set([
-            'and','or','the','for','with','a','an','to','of','in','on','at','as','be','is',
-            'are','was','were','this','that','these','those','it','its','our','their','from',
-            'we','you','i','need','want','someone','engineer','engineers','team','project',
-        ]);
-
-        // Helper: does the normalised spec contain a phrase (sequence of whole words)?
-        // Built with leading/trailing space so substring inclusion is word-bounded.
-        const paddedSpec = ' ' + normSpec + ' ';
-        const phraseInSpec = (phrase) => paddedSpec.includes(' ' + phrase + ' ');
-
-        const matches = [];
-        for (const sk of skillsR.rows) {
-            const candidates = [sk.name, ...(sk.sub_names || [])];
-            let hits = 0;
-            const matchedTerms = [];
-
-            for (const c of candidates) {
-                const t = c.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-                if (!t) continue;
-
-                // Strong signal: the whole candidate appears as a contiguous
-                // word sequence in the spec.
-                if (phraseInSpec(t)) {
-                    hits += 2;
-                    matchedTerms.push(c);
-                    continue;
-                }
-
-                // Weak signal: at least one significant word of a multi-word
-                // candidate appears as a whole word in the spec.
-                // Threshold: >=3 chars (so acronyms like BGP, VPN, AWS still
-                // count); reject stopwords explicitly.
-                const words = t.split(' ').filter(w => w.length >= 3 && !STOPWORDS.has(w));
-                const matchedWords = words.filter(w => specWords.has(w));
-                if (matchedWords.length > 0) {
-                    hits += 1;
-                    matchedTerms.push(c);
-                }
-            }
-
-            if (hits > 0) {
-                matches.push({
-                    skill_id: sk.id,
-                    skill: sk.name,
-                    weight: sk.weight,
-                    type: sk.skill_type,
-                    hits,
-                    matched_terms: Array.from(new Set(matchedTerms)).slice(0, 4),
-                });
-            }
-        }
+        // Normalisation, alias rewriting and scoring live in lib/spec-matcher.js
+        // (pure string logic, unit-tested there).
+        const normSpec = normaliseSpec(spec);
+        const matches = scoreSkillsAgainstSpec(normSpec, skillsR.rows);
 
         if (matches.length === 0) {
             return res.json({
@@ -433,8 +360,10 @@ router.post('/match', async (req, res) => {
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
             LEFT JOIN resource_sub_skills rss
                    ON rss.sub_skill_id = ss.id AND rss.resource_id = r.id
+            WHERE r.department_id = $1
+              AND ms.department_id = $1
             GROUP BY r.id, r.name, ms.name
-        `)).rows;
+        `, [req.departmentId])).rows;
 
         const byResource = new Map();
         for (const row of allMainLevels) {
@@ -496,7 +425,7 @@ router.post('/match', async (req, res) => {
  * re-rank or annotate the top candidates with reasoning.
  * Returns: { rule_based: {...}, ai_analysis: "..." } or 503 if no API key.
  */
-router.post('/match/ai', async (req, res) => {
+router.post('/match/ai', verifyAdminAuth, async (req, res) => {
     try {
         if (!(await getFlag('ai_enabled', true))) {
             return res.status(403).json({ success: false, error: 'AI features are disabled in Settings.' });
@@ -521,7 +450,7 @@ router.post('/match/ai', async (req, res) => {
             body: JSON.stringify({ spec }),
         };
         // Call internally rather than over HTTP
-        const fakeReq = { body: { spec } };
+        const fakeReq = { body: { spec }, departmentId: req.departmentId };
         let ruleData;
         await new Promise((resolve) => {
             const fakeRes = {
@@ -548,9 +477,10 @@ router.post('/match/ai', async (req, res) => {
                    ARRAY_AGG(ss.name ORDER BY ss.name) FILTER (WHERE ss.name IS NOT NULL) AS subs
             FROM main_skills ms
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+            WHERE ms.department_id = $1
             GROUP BY ms.id
             ORDER BY ms.skill_type, ms.name
-        `)).rows;
+        `, [req.departmentId])).rows;
         const catalogueText = catalogueRows.map(r =>
             `- ${r.main_name} (${r.skill_type}, weight ${r.weight}): ${(r.subs || []).join(', ') || '—'}`
         ).join('\n');
@@ -563,9 +493,11 @@ router.post('/match/ai', async (req, res) => {
             CROSS JOIN main_skills ms
             LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
             LEFT JOIN resource_sub_skills rss ON rss.sub_skill_id = ss.id AND rss.resource_id = r.id
+            WHERE r.department_id = $1
+              AND ms.department_id = $1
             GROUP BY r.id, r.name, r.job_role, ms.name
             ORDER BY r.name, ms.name
-        `)).rows;
+        `, [req.departmentId])).rows;
         const byPerson = new Map();
         for (const row of teamRows) {
             if (!byPerson.has(row.name)) byPerson.set(row.name, { role: row.job_role, skills: [] });
@@ -667,7 +599,7 @@ Be direct and concrete.`;
  * returns the assistant's next reply. Used by the floating chat widget.
  * Returns: { reply, model, usage } or 503 if no API key.
  */
-router.post('/chat', async (req, res) => {
+router.post('/chat', verifyAdminAuth, async (req, res) => {
     try {
         if (!(await getFlag('ai_enabled', true))) {
             return res.status(403).json({ success: false, error: 'AI features are disabled in Settings.' });
@@ -697,9 +629,10 @@ router.post('/chat', async (req, res) => {
                        ARRAY_AGG(ss.name ORDER BY ss.name) FILTER (WHERE ss.name IS NOT NULL) AS subs
                 FROM main_skills ms
                 LEFT JOIN sub_skills ss ON ss.main_skill_id = ms.id
+                WHERE ms.department_id = $1
                 GROUP BY ms.id
                 ORDER BY ms.skill_type, ms.name
-            `),
+            `, [req.departmentId]),
             // Raw per-sub-skill ratings (level > 0 only) so the assistant can
             // answer questions like "who's an expert in Cisco ISE specifically?"
             db.query(`
@@ -711,16 +644,18 @@ router.post('/chat', async (req, res) => {
                 JOIN main_skills ms ON ms.id = ss.main_skill_id
                 JOIN resources r ON r.id = rss.resource_id
                 WHERE rss.level > 0
+                  AND ms.department_id = $1
                 ORDER BY r.name, ms.skill_type, ms.name, ss.name
-            `),
+            `, [req.departmentId]),
             db.query(`
                 SELECT r.name AS resource_name, t.name AS training_name, t.code, t.vendor, t.category,
                        rt.status, rt.target_date, rt.completed_date, rt.expiry_date
                 FROM resource_trainings rt
                 JOIN resources r ON r.id = rt.resource_id
                 JOIN trainings t ON t.id = rt.training_id
+                WHERE r.department_id = $1
                 ORDER BY r.name, t.name
-            `).catch(() => ({ rows: [] })),
+            `, [req.departmentId]).catch(() => ({ rows: [] })),
         ]);
 
         const catalogueText = catalogueRows.rows.map(r =>
