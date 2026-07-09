@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { getApiKey, getFlag } = require('./settings');
+// AI endpoints call out to Anthropic on the operator's key — auth required.
+const { verifyAdminAuth } = require('../middleware/auth');
 const { normaliseSpec, scoreSkillsAgainstSpec } = require('../lib/spec-matcher');
 
 /**
@@ -423,7 +425,7 @@ router.post('/match', async (req, res) => {
  * re-rank or annotate the top candidates with reasoning.
  * Returns: { rule_based: {...}, ai_analysis: "..." } or 503 if no API key.
  */
-router.post('/match/ai', async (req, res) => {
+router.post('/match/ai', verifyAdminAuth, async (req, res) => {
     try {
         if (!(await getFlag('ai_enabled', true))) {
             return res.status(403).json({ success: false, error: 'AI features are disabled in Settings.' });
@@ -597,7 +599,7 @@ Be direct and concrete.`;
  * returns the assistant's next reply. Used by the floating chat widget.
  * Returns: { reply, model, usage } or 503 if no API key.
  */
-router.post('/chat', async (req, res) => {
+router.post('/chat', verifyAdminAuth, async (req, res) => {
     try {
         if (!(await getFlag('ai_enabled', true))) {
             return res.status(403).json({ success: false, error: 'AI features are disabled in Settings.' });

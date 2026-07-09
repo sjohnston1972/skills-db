@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { calculateMainSkillLevel } = require('../lib/skill-levels');
+const { verifyAdminAuth } = require('../middleware/auth');
+const { applyMigrations } = require('../lib/migrations');
 
 // GET /api/data - Return complete data in localStorage format
 router.get('/', async (req, res) => {
@@ -279,11 +281,35 @@ router.post('/export', async (req, res) => {
     }
 });
 
-// POST /api/data/reset - Reset to sample data
-router.post('/reset', async (req, res) => {
+// POST /api/data/reset - Reset to sample data.
+// Destructive: rebuilds the whole schema. Admin-only (#12) and requires an
+// explicit confirmation token so a stray curl can't wipe the database.
+router.post('/reset', verifyAdminAuth, async (req, res) => {
     try {
-        // Initialize/reset the database
-        await db.initDatabase();
+        if (!req.body || req.body.confirm !== 'RESET') {
+            return res.status(400).json({
+                success: false,
+                error: 'Reset is destructive. Send body { "confirm": "RESET" } to proceed.'
+            });
+        }
+
+        const ok = await db.initDatabase();
+        if (!ok) {
+            return res.status(500).json({
+                success: false,
+                error: 'Database re-initialisation failed — see server logs.'
+            });
+        }
+
+        // init-db.sql rebuilds the pre-department schema; re-apply migrations
+        // so department tables/columns exist again and the app stays usable.
+        const { failed } = await applyMigrations(db.query);
+        if (failed.length) {
+            return res.status(500).json({
+                success: false,
+                error: `Reset ran but migrations failed: ${failed.map(f => `${f.file} (${f.error})`).join('; ')}`
+            });
+        }
 
         res.json({
             success: true,

@@ -159,22 +159,10 @@ const startServer = async () => {
         // be applied manually as the postgres superuser; this loop just
         // surfaces what's outstanding.
         try {
-            const fs = require('fs');
-            const path = require('path');
-            const migrationsDir = path.join(__dirname, 'migrations');
-            if (fs.existsSync(migrationsDir)) {
-                const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
-                for (const f of files) {
-                    const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
-                    const statements = sql.split(';').map(s => s.trim()).filter(s => s && !s.startsWith('--'));
-                    try {
-                        for (const stmt of statements) await db.query(stmt);
-                        console.log(`Migration ${f}: ok (${statements.length} statements).`);
-                    } catch (e) {
-                        console.warn(`Migration ${f}: ${e.message} — run manually as 'postgres' if needed.`);
-                    }
-                }
-            }
+            const { applyMigrations } = require('./lib/migrations');
+            const { applied, failed } = await applyMigrations(db.query);
+            applied.forEach(f => console.log(`Migration ${f}: ok.`));
+            failed.forEach(f => console.warn(`Migration ${f.file}: ${f.error} — run manually as 'postgres' if needed.`));
         } catch (mErr) {
             console.error('Migration runner failed (non-fatal):', mErr.message);
         }
