@@ -363,7 +363,10 @@ router.post('/export', async (req, res) => {
 // POST /api/data/reset - Reset to sample data.
 // Destructive: rebuilds the whole schema. Admin-only (#12) and requires an
 // explicit confirmation token so a stray curl can't wipe the database.
-router.post('/reset', verifyAdminAuth, async (req, res) => {
+// Mounted in server.js ABOVE the department middleware: reset must work on
+// an empty database (its whole job is to create the schema), and the
+// department middleware needs the departments table to exist first (#5/#15).
+async function resetHandler(req, res) {
     try {
         if (!req.body || req.body.confirm !== 'RESET') {
             return res.status(400).json({
@@ -404,6 +407,7 @@ router.post('/reset', verifyAdminAuth, async (req, res) => {
             error: error.message
         });
     }
-});
+}
 
 module.exports = router;
+module.exports.resetHandler = resetHandler;

@@ -88,6 +88,14 @@ app.get('/api/metadata', async (req, res) => {
     }
 });
 
+// Reset rebuilds the whole schema, so like health/metadata it must not
+// depend on the department middleware — that middleware queries a table
+// reset may be about to (re)create. Admin auth + confirm token enforced
+// by the handler (#12, #5/#15).
+const { resetHandler } = require('./routes/data');
+const { verifyAdminAuth } = require('./middleware/auth');
+app.post('/api/data/reset', verifyAdminAuth, resetHandler);
+
 const { departmentMiddleware } = require('./middleware/department');
 app.use('/api', departmentMiddleware(db));
 
