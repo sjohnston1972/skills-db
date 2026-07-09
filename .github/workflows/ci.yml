@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: skills_matrix_test
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: "55433"
+      DB_NAME: skills_matrix_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      HTPASSWD_FILE: backend/__tests__/fixtures/htpasswd
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 18 matches the production runtime (Dockerfile node:18-alpine).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
