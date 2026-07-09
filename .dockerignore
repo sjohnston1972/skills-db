@@ -5,3 +5,9 @@ npm-debug.log
 README.md
 .DS_Store
 *.md
+# Local secrets must never enter the build context copies (.htpasswd is the
+# one deliberate exception — nginx needs it and the Dockerfile COPYs it).
+.env
+.env.*
+!.env.example
+creds.txt

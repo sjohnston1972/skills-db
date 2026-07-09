@@ -39,9 +39,10 @@ COPY package*.json ./
 # Install Node.js dependencies
 RUN npm install --production
 
-# Copy application code
+# Copy application code. Deliberately NO `COPY .env` — the ENV block below
+# supplies runtime defaults, and a local .env may hold real secrets that
+# must never be baked into the image (#14).
 COPY backend/ ./backend/
-COPY .env ./
 
 # Copy frontend files to nginx directory
 COPY frontend/ /usr/share/nginx/html/
