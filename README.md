@@ -252,7 +252,7 @@ services:
       - skills_db_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost/api/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
