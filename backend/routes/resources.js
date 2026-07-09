@@ -5,14 +5,7 @@ const bcrypt = require('bcrypt');
 
 const SALT_ROUNDS = 10;
 
-// Helper function to calculate main skill level from sub-skills
-function calculateMainSkillLevel(subSkills) {
-    if (!subSkills || Object.keys(subSkills).length === 0) return 0;
-
-    const levels = Object.values(subSkills);
-    const sum = levels.reduce((acc, level) => acc + level, 0);
-    return Math.round(sum / levels.length);
-}
+const { calculateMainSkillLevel } = require('../lib/skill-levels');
 
 // GET /api/resources - List all resources
 router.get('/', async (req, res) => {

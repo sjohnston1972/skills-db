@@ -90,10 +90,12 @@ const DataAPI = {
     },
 
     /**
-     * Reset to default sample data
+     * Reset to default sample data.
+     * The API refuses to run this destructive operation without the
+     * explicit confirmation token.
      */
     async reset() {
-        return await apiRequest('/data/reset', 'POST');
+        return await apiRequest('/data/reset', 'POST', { confirm: 'RESET' });
     }
 };
 
