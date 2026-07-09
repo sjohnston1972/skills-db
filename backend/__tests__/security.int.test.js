@@ -94,6 +94,13 @@ describe('AI endpoints require auth (#10)', () => {
     });
 });
 
+describe('no wide-open CORS (#13)', () => {
+    test('responses carry no Access-Control-Allow-Origin header', async () => {
+        const res = await request(app).get('/api/health');
+        expect(res.headers['access-control-allow-origin']).toBeUndefined();
+    });
+});
+
 describe('reset requires admin auth + confirmation token (#12)', () => {
     test('POST /api/data/reset anonymous → 401', async () => {
         const res = await request(app).post('/api/data/reset').send({});

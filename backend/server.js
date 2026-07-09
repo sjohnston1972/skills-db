@@ -1,5 +1,4 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
@@ -21,8 +20,8 @@ const departmentsRoutes = require('./routes/departments');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
+// Middleware. No CORS: the frontend is served same-origin by nginx, so
+// cross-origin API access is deliberately not enabled (#13).
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
